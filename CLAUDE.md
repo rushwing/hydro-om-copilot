@@ -55,9 +55,13 @@ hydro-om-copilot/
 │   └── tsconfig.json
 ├── scripts/
 │   ├── ingest_kb.py        # 知识库入库脚本
-│   └── validate_kb.py      # YAML 元数据校验
+│   ├── validate_kb.py      # YAML 元数据校验
+│   ├── local/              # 本地开发脚本（env-setup / build / dev / test / ingest）
+│   ├── docker/             # Docker 构建与部署脚本（build / push / deploy-compose / deploy-k8s）
+│   └── k8s/                # Kubernetes 清单（kustomize base，namespace hydro-om）
 ├── docs/                   # 架构文档
-├── docker-compose.yml
+├── docker-compose.yml      # 开发用（热重载 + build:）
+├── docker-compose.prod.yml # 生产用（预构建镜像 + Qdrant v1.11.0）
 └── .env.example
 ```
 
@@ -65,42 +69,70 @@ hydro-om-copilot/
 
 ## 开发命令
 
-### 后端
+### 推荐：使用脚本（详见 `docs/07-build-deploy.md`）
 
 ```bash
-cd backend
-uv sync --extra dev        # 安装依赖（含 dev：ruff, pytest, mypy）
-cp ../.env.example ../.env # 首次设置环境变量
-uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+# 1. 环境初始化（仅需一次）
+bash scripts/local/env-setup.sh    # 检查依赖 + 创建 .env + uv sync + npm install
+
+# 2. 知识库入库
+bash scripts/local/ingest.sh       # 支持 --reset / --kb-dir
+
+# 3. 启动开发服务器
+bash scripts/local/dev.sh          # 后端 :8000 + 前端 :5173，CTRL-C 同时终止
+
+# 4. 测试
+bash scripts/local/test.sh         # pytest + tsc + ESLint；支持 --backend-only / --frontend-only
+
+# 5. 生产构建（含 lint）
+bash scripts/local/build.sh        # ruff → tsc → ESLint → vite build
 ```
 
-### 前端
+### 手动命令（底层）
 
 ```bash
+# 后端
+cd backend
+uv sync                    # 安装依赖
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# 前端
 cd frontend
 npm install
 npm run dev                # Vite dev server → localhost:5173
-npm run build              # 生产构建（tsc + vite build）
-npm run type-check         # 仅类型检查，不输出文件
+npm run build              # tsc + vite build → dist/
+npm run type-check         # tsc --noEmit
 npm run lint               # ESLint
-```
 
-### 知识库入库
-
-```bash
+# 知识库
 cd backend
-uv run python ../scripts/validate_kb.py   # 先校验 YAML 元数据
-uv run python ../scripts/ingest_kb.py     # 入库（ChromaDB + BM25）
-uv run python ../scripts/ingest_kb.py --reset  # 清空后重建
+uv run python ../scripts/validate_kb.py   # 校验 YAML 元数据
+uv run python ../scripts/ingest_kb.py     # 入库
+uv run python ../scripts/ingest_kb.py --reset  # 清空重建
 ```
 
-### Docker（全栈）
+### Docker 构建与部署
 
 ```bash
-docker-compose up --build
-# backend:  localhost:8000
-# frontend: localhost:5173
-# qdrant:   localhost:6333
+# 构建 CentOS Stream 9 镜像（打 git-sha + semver + latest 三个 tag）
+bash scripts/docker/build.sh
+REGISTRY=registry.example.com/hydro bash scripts/docker/build.sh  # 带 registry 前缀
+
+# 推送镜像
+REGISTRY=registry.example.com/hydro bash scripts/docker/push.sh
+
+# docker-compose 生产部署（使用 docker-compose.prod.yml）
+bash scripts/docker/deploy-compose.sh up      # 启动
+bash scripts/docker/deploy-compose.sh logs    # 跟踪日志
+bash scripts/docker/deploy-compose.sh ingest  # 容器内入库
+
+# Kubernetes 部署
+kubectl create secret generic hydro-om-secrets \
+  --namespace hydro-om --from-literal=ANTHROPIC_API_KEY=sk-ant-...
+REGISTRY=registry.example.com/hydro IMAGE_TAG=<git-sha> \
+  bash scripts/docker/deploy-k8s.sh apply
+bash scripts/docker/deploy-k8s.sh status          # 查看 Pod/Service 状态
+bash scripts/docker/deploy-k8s.sh rollout-status  # 等待滚动更新完成
 ```
 
 ---
@@ -300,3 +332,9 @@ A: 不要用 `diagnosisStore.riskLevelColor`，使用组件本地的 `darkRiskCo
 
 **Q: SSE 流式输出中途中断**
 A: 检查 `AbortController` 是否被意外触发；`useSSEDiagnosis.ts` 在每次 `run()` 前会调用 `abortRef.current?.abort()` 取消上一次请求。
+
+**Q: 后端 Docker 容器启动超时 / 健康检查失败**
+A: 首次启动需下载约 4GB 嵌入模型。挂载 `models_cache` 卷后重启秒级完成。详见 `docs/07-build-deploy.md` 第 9 节。
+
+**Q: K8s SSE 流在 Ingress 处中断**
+A: 确认 nginx Ingress 注解包含 `nginx.ingress.kubernetes.io/proxy-buffering: "off"` 和 `proxy-read-timeout: "300"`。详见 `scripts/k8s/06-ingress.yaml`。
