@@ -1,3 +1,5 @@
+> **适用场景**：技术选型 / trade-off 讨论、Lint 工具链配置、scale-up 架构规划时
+
 # 技术选型逻辑、Scale-Up 可行性与 Trade-off
 
 ## 1. 选型全景表

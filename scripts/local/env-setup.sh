@@ -116,7 +116,7 @@ fi
 # ── Backend dependencies ───────────────────────────────────────────────────────
 log_step "Installing backend dependencies"
 cd "$PROJECT_ROOT/backend"
-uv sync
+uv sync --extra dev
 log_ok "Backend dependencies installed (see backend/.venv/)"
 
 # ── Frontend dependencies ──────────────────────────────────────────────────────

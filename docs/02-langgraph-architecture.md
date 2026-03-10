@@ -1,3 +1,5 @@
+> **适用场景**：修改 LangGraph 节点、AgentState 字段、节点间路由逻辑时
+
 # LangGraph 状态机架构设计、业务约束与能力边界
 
 ## 1. 设计动机：为什么用 StateGraph 而非直接调用链
