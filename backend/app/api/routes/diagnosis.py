@@ -28,9 +28,10 @@ async def run_diagnosis(
     The client should use EventSource or fetch + ReadableStream to consume events.
     Event types: status | token | result | error
 
-    Single-invocation pattern: astream_events accumulates on_chain_end outputs
-    per node into `accumulated`, then builds DiagnosisResult without a second
-    graph.ainvoke call.
+    Single-invocation pattern: astream_events stores each node's on_chain_end
+    output under its own key in `node_outputs`. The final DiagnosisResult is
+    assembled by reading each field from exactly the node that owns it, so no
+    node can silently overwrite another's output.
     """
     session_id = request.session_id or str(uuid.uuid4())
 
@@ -54,7 +55,10 @@ async def run_diagnosis(
     }
 
     async def event_generator():
-        accumulated: dict = {}
+        # Each node's on_chain_end output is stored under its own key.
+        # Fields are read only from the node that owns them, so no node can
+        # silently overwrite another's output.
+        node_outputs: dict[str, dict] = {}
 
         try:
             async for event in graph.astream_events(initial_state, version="v2"):
@@ -68,7 +72,7 @@ async def run_diagnosis(
                     yield await sse_format("status", {"node": name, "phase": "end"})
                     output = event.get("data", {}).get("output") or {}
                     if isinstance(output, dict):
-                        accumulated.update(output)
+                        node_outputs[name] = output
 
                 elif kind == "on_chat_model_stream":
                     chunk = event.get("data", {}).get("chunk")
@@ -79,21 +83,25 @@ async def run_diagnosis(
             yield await sse_format("error", {"message": str(exc)})
             return
 
-        # Build final structured result from accumulated node outputs
+        # Assemble the final result from per-node outputs (explicit field ownership).
         try:
-            merged = {**initial_state, **accumulated}
-            raw_topic = merged.get("topic")
+            parsed = node_outputs.get("symptom_parser", {})
+            retrieval = node_outputs.get("retrieval", {})
+            reasoning = node_outputs.get("reasoning", {})
+            report = node_outputs.get("report_gen", {})
+
+            raw_topic = parsed.get("topic")
             result = DiagnosisResult(
                 session_id=session_id,
-                unit_id=(merged.get("parsed_symptom") or {}).get("unit_id"),
+                unit_id=(parsed.get("parsed_symptom") or {}).get("unit_id"),
                 topic=DiagnosisTopic(raw_topic) if raw_topic else None,
-                root_causes=[RootCause(**rc) for rc in merged.get("root_causes", [])],
-                check_steps=[CheckStep(**cs) for cs in merged.get("check_steps", [])],
-                risk_level=RiskLevel(merged.get("risk_level", "medium")),
-                escalation_required=merged.get("escalation_required", False),
-                escalation_reason=merged.get("escalation_reason"),
-                report_draft=merged.get("report_draft"),
-                sources=merged.get("sources", []),
+                root_causes=[RootCause(**rc) for rc in reasoning.get("root_causes", [])],
+                check_steps=[CheckStep(**cs) for cs in report.get("check_steps", [])],
+                risk_level=RiskLevel(reasoning.get("risk_level", "medium")),
+                escalation_required=reasoning.get("escalation_required", False),
+                escalation_reason=reasoning.get("escalation_reason"),
+                report_draft=report.get("report_draft"),
+                sources=retrieval.get("sources", []),
             )
             yield await sse_format("result", result.model_dump())
         except Exception as exc:

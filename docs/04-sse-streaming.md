@@ -140,38 +140,65 @@ LangGraph 的 `astream_events` 是**流式执行事件流**，它逐步触发节
 
 流式阶段只能获取 token 片段，无法直接获取 `root_causes`, `check_steps`, `risk_level` 等结构化字段。
 
-### 4.2 推荐主方案：单次执行 + `on_chain_end` 捕获
+### 4.2 当前主方案：单次执行 + 按节点所有权汇总
 
-在同一次 `astream_events` 中监听 `on_chain_end` 事件，从最后一个节点（`report_gen`）的输出直接提取完整 state：
+在同一次 `astream_events` 中监听每个节点的 `on_chain_end` 事件，将各节点输出存入以节点名为 key 的字典。最终结果按**字段所有权**从对应节点取值，任何节点都无法覆盖其他节点的字段：
 
 ```python
 async def event_generator():
-    final_output: dict = {}
+    # 每个节点的输出存在自己的 key 下，字段来源可追溯
+    node_outputs: dict[str, dict] = {}
 
     async for event in graph.astream_events(initial_state, version="v2"):
         kind = event["event"]
         name = event.get("name", "")
 
-        if kind == "on_chain_start":
+        if kind == "on_chain_start" and name in _NODE_NAMES:
             yield sse_format("status", {"node": name, "phase": "start"})
+
+        elif kind == "on_chain_end" and name in _NODE_NAMES:
+            yield sse_format("status", {"node": name, "phase": "end"})
+            output = event.get("data", {}).get("output") or {}
+            if isinstance(output, dict):
+                node_outputs[name] = output
 
         elif kind == "on_chat_model_stream":
             token = event["data"]["chunk"].content
             yield sse_format("token", {"text": token})
 
-        elif kind == "on_chain_end" and name == "report_gen":
-            # v2 事件的 on_chain_end 包含节点输出 dict
-            output = event.get("data", {}).get("output", {})
-            final_output = output  # 直接使用，无需二次 ainvoke
+    # 按字段所有权拼装最终结果
+    parsed   = node_outputs.get("symptom_parser", {})
+    retrieval = node_outputs.get("retrieval", {})
+    reasoning = node_outputs.get("reasoning", {})
+    report    = node_outputs.get("report_gen", {})
 
-    if final_output:
-        result = DiagnosisResult(**_extract_result_fields(final_output))
-        yield sse_format("result", result.model_dump())
+    result = DiagnosisResult(
+        unit_id=(parsed.get("parsed_symptom") or {}).get("unit_id"),
+        topic=parsed.get("topic"),
+        root_causes=reasoning.get("root_causes", []),
+        risk_level=reasoning.get("risk_level", "medium"),
+        escalation_required=reasoning.get("escalation_required", False),
+        escalation_reason=reasoning.get("escalation_reason"),
+        check_steps=report.get("check_steps", []),
+        report_draft=report.get("report_draft"),
+        sources=retrieval.get("sources", []),
+        ...
+    )
+    yield sse_format("result", result.model_dump())
 ```
 
-**优点**：单次执行，LLM 节点只调用一次，流式文本与结构化结果来自同一次推理，逻辑一致。
+**字段所有权映射**：
 
-**前提**：需验证目标 LangGraph 版本的 `astream_events version="v2"` 在 `on_chain_end` 中确实返回完整 output dict（已在 LangGraph ≥ 0.2.0 中支持）。
+| 字段 | 来源节点 |
+|------|---------|
+| `unit_id`, `topic` | `symptom_parser` |
+| `sources` | `retrieval` |
+| `root_causes`, `risk_level`, `escalation_*` | `reasoning` |
+| `check_steps`, `report_draft` | `report_gen` |
+
+**优点**：单次执行，LLM 节点只调用一次；字段来源显式可追溯；任何节点的输出变化只影响它自己负责的字段，不会静默覆盖其他节点的结果。
+
+**前提**：LangGraph ≥ 0.2.0，`astream_events version="v2"` 的 `on_chain_end` 事件包含节点 output dict（已验证）。
 
 ### 4.3 ⚠ 已知缺陷实现（禁止作为生产默认方案）
 
