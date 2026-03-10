@@ -42,19 +42,40 @@ L3  厂站专有层（待接入）
 ```yaml
 ---
 doc_id: L2.TOPIC.VIB.001
-title: 水电机组振动摆度诊断专题指南
-version: 1.0.0
-route_keys: [振动, 摆度, 轴振, 瓦振]
-upstream: [L1.ROUTER.001]
-downstream: [L2.SUPPORT.RULE.001, L2.SUPPORT.CASE.001]
+doc_level: L2
+knowledge_type: topic_guide
+domain: hydro_om_copilot
+route_keys:
+  - vibration_swing
+  - vibration_frequency
+  - shaft_runout
+upstream_docs:
+  - L1.ROUTER.001
+  - L1.OVERVIEW.001
+downstream_docs:
+  - L2.SUPPORT.RULE.001
+  - L2.SUPPORT.CASE.001
+  - L3.SITE.001
+site_stub_refs:
+  - L3.SITE.001
+  - L3.SITE.002
 ---
 ```
 
 字段说明：
-- `doc_id`：全局唯一标识符，用于 corpus 过滤和 sources 追踪
-- `route_keys`：与 `TOPIC_KEYWORDS` 对应，用于检索路由
-- `upstream`：该文档的上游依赖（总览/路由文档）
-- `downstream`：该文档的下游扩展（规则/案例文档）
+
+| 字段 | 是否必填 | 说明 |
+|------|---------|------|
+| `doc_id` | 必填 | 全局唯一标识符，用于 corpus 过滤和 sources 追踪 |
+| `doc_level` | 必填 | L0 / L1 / L2 / L3 |
+| `knowledge_type` | 必填 | `methodology` / `topic_guide` / `rule_base` / `case_base` / `overview` / `router` |
+| `domain` | 必填 | 固定为 `hydro_om_copilot` |
+| `route_keys` | 必填 | 与 `TOPIC_KEYWORDS` 字典值对应；首个 route_key 对应 topic 路由键（如 `governor_oil_pressure`） |
+| `upstream_docs` | 推荐 | 该文档的上游依赖（总览/路由文档的 doc_id 列表） |
+| `downstream_docs` | 推荐 | 该文档的下游扩展（规则/案例/L3 文档的 doc_id 列表） |
+| `site_stub_refs` | 可选 | 该文档所需的 L3 现场化模板引用，用于提示运维人员补充本厂数据 |
+
+> **注**：`title` 和 `version` 字段不在强制契约内，各文档可自由附加但不纳入系统逻辑校验。
 
 ---
 

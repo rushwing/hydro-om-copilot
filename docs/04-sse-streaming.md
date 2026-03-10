@@ -130,7 +130,7 @@ data: {"message": "symptom_parser failed: ..."}
 
 ---
 
-## 4. 双调用模式（Double-invocation Pattern）
+## 4. 最终 State 获取策略
 
 ### 4.1 问题背景
 
@@ -138,42 +138,64 @@ LangGraph 的 `astream_events` 是**流式执行事件流**，它逐步触发节
 
 流式阶段只能获取 token 片段，无法直接获取 `root_causes`, `check_steps`, `risk_level` 等结构化字段。
 
-### 4.2 当前解决方案
+### 4.2 推荐主方案：单次执行 + `on_chain_end` 捕获
+
+在同一次 `astream_events` 中监听 `on_chain_end` 事件，从最后一个节点（`report_gen`）的输出直接提取完整 state：
 
 ```python
-# diagnosis.py:51-76
 async def event_generator():
+    final_output: dict = {}
+
+    async for event in graph.astream_events(initial_state, version="v2"):
+        kind = event["event"]
+        name = event.get("name", "")
+
+        if kind == "on_chain_start":
+            yield sse_format("status", {"node": name, "phase": "start"})
+
+        elif kind == "on_chat_model_stream":
+            token = event["data"]["chunk"].content
+            yield sse_format("token", {"text": token})
+
+        elif kind == "on_chain_end" and name == "report_gen":
+            # v2 事件的 on_chain_end 包含节点输出 dict
+            output = event.get("data", {}).get("output", {})
+            final_output = output  # 直接使用，无需二次 ainvoke
+
+    if final_output:
+        result = DiagnosisResult(**_extract_result_fields(final_output))
+        yield sse_format("result", result.model_dump())
+```
+
+**优点**：单次执行，LLM 节点只调用一次，流式文本与结构化结果来自同一次推理，逻辑一致。
+
+**前提**：需验证目标 LangGraph 版本的 `astream_events version="v2"` 在 `on_chain_end` 中确实返回完整 output dict（已在 LangGraph ≥ 0.2.0 中支持）。
+
+### 4.3 ⚠ 已知缺陷实现（禁止作为生产默认方案）
+
+> **警告**：以下"双调用"模式存在架构级缺陷，**不得在生产环境作为默认方案**。仅在调试或验证 `on_chain_end` 输出格式时作为临时手段使用。
+
+```python
+# ⚠ 调试专用 — 禁止用于生产
+async def event_generator_debug():
     # 第一次调用：流式推送 token 和 status 事件
     async for chunk in stream_agent_events(graph, initial_state):
         yield chunk
 
-    # 第二次调用：获取最终结构化 state
+    # 第二次调用：重复执行整个 graph（所有 LLM 节点重复计费！）
     final_state = await graph.ainvoke(initial_state)
     result = DiagnosisResult(...)
-    yield await sse_format("result", result.model_dump())
+    yield sse_format("result", result.model_dump())
 ```
 
-### 4.3 代价分析
+**代价分析**（架构级缺陷，不只是性能问题）：
 
-| 代价项 | 说明 |
+| 缺陷项 | 说明 |
 |--------|------|
-| LLM 调用次数 | 每次诊断请求触发 2 倍 LLM 调用（reasoning + report_gen 各调用 2 次） |
-| 延迟增加 | `ainvoke` 在 `astream_events` 完成后执行，总延迟约增加 50-100%（预估） |
-| 成本增加 | token 消耗约翻倍 |
-
-### 4.4 P2 优化方向
-
-在 `astream_events` 的 `on_chain_end` 回调中捕获最终节点输出：
-
-```python
-elif kind == "on_chain_end" and name == "report_gen":
-    # astream_events v2 的 on_chain_end 包含节点输出
-    output = event.get("data", {}).get("output", {})
-    # 从 output 中提取最终 state，直接构建 DiagnosisResult
-    # → 无需第二次 ainvoke
-```
-
-这需要验证 `astream_events version="v2"` 是否在 `on_chain_end` 事件中返回完整节点输出（LangGraph 版本依赖）。
+| LLM 调用翻倍 | reasoning + report_gen 各执行 2 次，每次诊断成本约 2× |
+| 延迟翻倍 | ainvoke 串行在 astream_events 之后，总耗时 ≈ 2 倍推理时间 |
+| 结果不一致风险 | 两次推理为独立随机过程（temperature > 0），流式文本与结构化结果可能来自不同推理，存在矛盾 |
+| 可解释性丧失 | 用户看到的流式推理与最终输出的根因不对应 |
 
 ---
 

@@ -1,6 +1,5 @@
+import operator
 from typing import Annotated, TypedDict
-
-from langgraph.graph.message import add_messages
 
 
 class ParsedSymptom(TypedDict, total=False):
@@ -33,7 +32,7 @@ class AgentState(TypedDict):
     ocr_text: str | None          # extracted from image_agent
 
     # ── Routing ────────────────────────────────────────────────────────────
-    topic: str | None             # vibration_swing | governor_oil | bearing_temp
+    topic: str | None             # vibration_swing | governor_oil_pressure | bearing_temp_cooling
 
     # ── Retrieval ──────────────────────────────────────────────────────────
     retrieved: RetrievedContext | None
@@ -48,7 +47,7 @@ class AgentState(TypedDict):
 
     # ── Streaming ──────────────────────────────────────────────────────────
     # Accumulates LLM token chunks for SSE streaming
-    stream_tokens: Annotated[list[str], add_messages]  # type: ignore[type-arg]
+    stream_tokens: Annotated[list[str], operator.add]
 
     # ── Metadata ───────────────────────────────────────────────────────────
     sources: list[str]               # doc_ids referenced
