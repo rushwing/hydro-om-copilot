@@ -98,12 +98,19 @@ LANGCHAIN_PROJECT=hydro-om-copilot  # 项目名称（按电厂可自定义）
 
 ### 3.2 环境配置策略
 
+> **央企数据边界要求**：水电厂运维数据（设备编号、运行参数、故障症状）属于生产安全敏感数据，可能受电力监管和企业数据分级制度约束。生产环境**默认禁用**外部 SaaS 追踪，仅在完成数据分级审批、明确数据出境合规路径后，方可选择性开启。
+
 | 环境 | `LANGCHAIN_TRACING_V2` | 说明 |
 |------|----------------------|------|
 | 本地开发 | `false` | 无需 API Key，节省配置成本 |
 | CI/CD | `false` | 测试运行不上传 trace |
-| Staging | `true` | 验证 trace 完整性，project 名加 `-staging` 后缀 |
-| 生产 | `true` | 全量上传，按电厂隔离 project |
+| Staging | `true`（可选） | 验证 trace 完整性，使用脱敏测试数据，project 名加 `-staging` 后缀 |
+| 生产 | **`false`（默认禁用）** | 默认关闭外部追踪；如需开启须通过数据分级审批，且必须配合 `LANGCHAIN_HIDE_INPUTS=true` 或改用自托管方案 |
+
+**生产环境替代方案（按优先级排序）**：
+1. **结构化本地日志**（推荐默认）：记录 `session_id`、`risk_level`、`sources`、各节点耗时，不含用户 query 和 HMI 截图。满足基本可观测性，零数据出境风险。
+2. **自托管 LangSmith**（见第 6 节）：数据不离境，适合有 K8s 基础设施的电厂。
+3. **LangSmith SaaS + 输入隐藏**：仅在完成数据合规审批后，配合 `LANGCHAIN_HIDE_INPUTS=true` 使用，仅保留 token 计数和延迟数据。
 
 ### 3.3 多电厂 Project 命名建议
 

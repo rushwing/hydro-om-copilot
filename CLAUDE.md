@@ -168,11 +168,20 @@ symptom_parser → [image_agent?] → retrieval → reasoning → report_gen
 - 所有节点返回 partial state，不做全量覆盖
 - 节点入口文件：`backend/app/agents/graph.py`
 
+### topic 键 → 知识库覆盖
+
+| topic 键 | 对应知识库文档 |
+|----------|--------------|
+| `vibration_swing` | `L2.TOPIC.VIB.001` |
+| `governor_oil_pressure` | `L2.TOPIC.GOV.001` |
+| `bearing_temp_cooling` | `L2.TOPIC.BEAR.001` |
+| 所有 topic | `L1.ROUTER.001` + `L1.OVERVIEW.001` + `L2.SUPPORT.RULE.001` + `L2.SUPPORT.CASE.001` |
+
 ### 语料库 → 集合映射
 
-| 语料库 | 匹配 doc_id 前缀 |
-|--------|-----------------|
-| `procedure` | `L2.TOPIC.*` + `L1.*` |
+| 语料库 | 包含 doc_id |
+|--------|------------|
+| `procedure` | `L2.TOPIC.VIB.001`, `L2.TOPIC.GOV.001`, `L2.TOPIC.BEAR.001`, `L1.ROUTER.001`, `L1.OVERVIEW.001` |
 | `rule` | `L2.SUPPORT.RULE.001` |
 | `case` | `L2.SUPPORT.CASE.001` |
 
@@ -207,8 +216,8 @@ RERANKER_MODEL=BAAI/bge-reranker-v2-m3
 KB_DOCS_DIR=./knowledge_base/docs_internal
 CORS_ORIGINS=http://localhost:5173
 
-# 可选：LangSmith 追踪
-LANGCHAIN_TRACING_V2=true
+# LangSmith 追踪（生产环境默认禁用，数据合规审批后方可开启）
+LANGCHAIN_TRACING_V2=false
 LANGCHAIN_API_KEY=ls__...
 ```
 
@@ -216,18 +225,29 @@ LANGCHAIN_API_KEY=ls__...
 
 ## 知识库结构
 
-四层体系（L0–L3），YAML frontmatter 元数据：
+四层体系（L0–L3），YAML frontmatter 元数据（以下为实际契约字段）：
 
 ```yaml
 ---
 doc_id: L2.TOPIC.VIB.001
 doc_level: L2
-route_keys: [vibration_swing]
-upstream: [L1.001]
-downstream: [L3.VIB.001.P01]
-title: 振动摆度诊断导图
+knowledge_type: topic_guide
+domain: hydro_om_copilot
+route_keys:
+  - vibration_swing       # 首个 key 对应 TOPIC_KEYWORDS 字典键
+  - vibration_frequency
+upstream_docs:
+  - L1.ROUTER.001
+downstream_docs:
+  - L2.SUPPORT.RULE.001
+  - L3.SITE.001
+site_stub_refs:
+  - L3.SITE.001
 ---
 ```
+
+必填字段：`doc_id`、`doc_level`、`knowledge_type`、`domain`、`route_keys`。
+`upstream_docs`、`downstream_docs`、`site_stub_refs` 推荐填写，`title`/`version` 可选附加但不纳入系统校验逻辑。
 
 `doc_id` 前缀用于前端知识库来源颜色编码：
 - `L1.*` → 蓝色

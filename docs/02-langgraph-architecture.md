@@ -51,21 +51,23 @@ return {
 | `escalation_required` | `bool` | reasoning | report_gen | 是否需要升级处理 |
 | `escalation_reason` | `Optional[str]` | reasoning | report_gen | 升级原因说明 |
 | `report_draft` | `Optional[str]` | report_gen | API 层（输出） | 班组交班汇报草稿 |
-| `stream_tokens` | `Annotated[list[str], add_messages]` | 各 LLM 节点 | SSE streaming | token 流累积 |
+| `stream_tokens` | `Annotated[list[str], operator.add]` | 各 LLM 节点 | SSE streaming | token 流累积 |
 | `sources` | `list[str]` | retrieval | API 层（输出） | 引用文档 doc_id 列表 |
 | `error` | `Optional[str]` | 任意节点 | API 层 | 错误信息，不中断流程 |
 
-### 2.2 `stream_tokens` 的 `add_messages` reducer 设计
+### 2.2 `stream_tokens` 的 `operator.add` reducer 设计
 
-`stream_tokens` 使用 `Annotated[list[str], add_messages]` 注解。`add_messages` 是 LangGraph 内置的 reducer，语义是"追加"而非"覆盖"：
+`stream_tokens` 使用 `Annotated[list[str], operator.add]` 注解。`operator.add` 是 Python 内置的列表拼接函数，语义清晰：将新 token 列表追加到现有列表末尾。
 
 ```python
 # 当节点返回 {"stream_tokens": ["新 token"]} 时
-# LangGraph 调用 add_messages(current_list, ["新 token"])
-# 结果是追加，而非替换
+# LangGraph 调用 operator.add(current_list, ["新 token"])
+# 等价于 current_list + ["新 token"]，结果是追加而非替换
 ```
 
-这使得多个节点可以向 `stream_tokens` 追加内容，无需手工合并列表。SSE streaming 层（`streaming.py`）监听 `on_chat_model_stream` 事件直接推送 token，`stream_tokens` 主要用于 LangSmith trace 记录完整 token 序列。
+**为何不用 `add_messages`**：`add_messages` 是 LangGraph 专为 `BaseMessage` 对象列表设计的 reducer，包含消息去重、ID 合并等消息对象特有逻辑，不适合用于纯字符串列表。对 `list[str]` 使用 `add_messages` 会导致类型语义不匹配，并在 LangGraph 升级或消息结构变化时有运行时异常风险。
+
+SSE streaming 层（`streaming.py`）监听 `on_chat_model_stream` 事件直接推送 token，`stream_tokens` 主要用于 LangSmith trace 记录完整 token 序列。
 
 ---
 
@@ -154,9 +156,9 @@ procedure_docs, rule_docs, case_docs = await asyncio.gather(
 ```python
 # backend/app/agents/symptom_parser.py:25-40
 TOPIC_KEYWORDS = {
-    "vibration_swing": ["振动", "摆度", "抖动", "晃动", "位移", "瓦振", "轴振"],
-    "governor_oil":    ["调速器", "油压", "压油罐", "主配压阀", "导叶", "开度", "漏油"],
-    "bearing_temp":    ["轴承", "温度", "温升", "冷却水", "推力", "导轴承", "过热"],
+    "vibration_swing":       ["振动", "摆度", "抖动", "晃动", "位移", "瓦振", "轴振"],
+    "governor_oil_pressure": ["调速器", "油压", "压油罐", "主配压阀", "导叶", "开度", "漏油"],
+    "bearing_temp_cooling":  ["轴承", "温度", "温升", "冷却水", "推力", "导轴承", "过热"],
 }
 ```
 
@@ -196,7 +198,7 @@ TOPIC_KEYWORDS = {
 
 ### 5.3 Critical 风险强制输出升级理由
 
-`reasoning` 节点输出 `risk_level: "critical"` 时，`escalation_required` 必须为 `true`，`escalation_reason` 必须非空。前端检测到 critical 时显示强提示 UI（紫色 badge，强制滚动到风险提示区域）。
+`reasoning` 节点输出 `risk_level: "critical"` 时，`escalation_required` 必须为 `true`，`escalation_reason` 必须非空。前端检测到 critical 时显示强提示 UI（红色 badge 含 `critical-pulse` 闪烁动画，强制滚动到风险提示区域）。
 
 ### 5.4 不做自主控制指令
 
@@ -215,8 +217,8 @@ Guardrails 层：
 | 故障类型 | topic 键 | 知识库覆盖 |
 |----------|----------|-----------|
 | 振动/摆度异常 | `vibration_swing` | L2.TOPIC.VIB.001 + L1 |
-| 调速器/油压异常 | `governor_oil` | L2.TOPIC.GOV.001 + L1 |
-| 轴承温度异常 | `bearing_temp` | L2.TOPIC.BEAR.001 + L1 |
+| 调速器/油压异常 | `governor_oil_pressure` | L2.TOPIC.GOV.001 + L1 |
+| 轴承温度异常 | `bearing_temp_cooling` | L2.TOPIC.BEAR.001 + L1 |
 | 通用运维知识 | 所有 topic | L1.ROUTER.001 + L1.OVERVIEW.001 |
 | 规程规则 | 所有 topic | L2.SUPPORT.RULE.001 |
 | 历史案例 | 所有 topic | L2.SUPPORT.CASE.001 |
