@@ -1,0 +1,84 @@
+# =============================================================================
+# Ingress — nginx ingress controller (assumed)
+#
+# Routing strategy (split-path):
+#   /diagnosis/*  → hydro-om-backend:8000  (SSE streaming API)
+#   /health       → hydro-om-backend:8000  (health check)
+#   /*            → hydro-om-frontend:80   (React SPA)
+#
+# This avoids an extra nginx hop through the frontend container for API calls.
+# The frontend nginx proxy is kept for docker-compose compatibility.
+#
+# Prerequisites:
+#   kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/...
+#   (or install via Helm: helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx)
+#
+# TLS: managed by cert-manager (Let's Encrypt). Install cert-manager and
+#      create a ClusterIssuer named 'letsencrypt-prod' before applying.
+#
+# Replace `hydro-om.example.com` with your actual domain.
+# =============================================================================
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hydro-om-ingress
+  namespace: hydro-om
+  labels:
+    app.kubernetes.io/name: hydro-om-copilot
+  annotations:
+    # ── nginx ingress ──────────────────────────────────────────────────────
+    kubernetes.io/ingress.class: "nginx"
+
+    # SSE: disable proxy buffering for /diagnosis/run streaming endpoint
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+
+    # Rewrite /diagnosis/ → /diagnosis/ (no rewrite needed here, path is preserved)
+
+    # ── TLS via cert-manager (optional) ────────────────────────────────────
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+
+    # ── Security headers ───────────────────────────────────────────────────
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header X-Frame-Options "SAMEORIGIN" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header X-XSS-Protection "1; mode=block" always;
+      more_set_headers "Server: ";
+
+spec:
+  # ── TLS (uncomment and update when cert-manager is ready) ─────────────────
+  # tls:
+  # - hosts:
+  #   - hydro-om.example.com
+  #   secretName: hydro-om-tls
+
+  rules:
+  - host: hydro-om.example.com   # ← REPLACE with your domain
+    http:
+      paths:
+      # ── Backend: diagnosis API (SSE) ──────────────────────────────────
+      - path: /diagnosis
+        pathType: Prefix
+        backend:
+          service:
+            name: hydro-om-backend
+            port:
+              number: 8000
+      # ── Backend: health check ─────────────────────────────────────────
+      - path: /health
+        pathType: Exact
+        backend:
+          service:
+            name: hydro-om-backend
+            port:
+              number: 8000
+      # ── Frontend: SPA (catch-all) ─────────────────────────────────────
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: hydro-om-frontend
+            port:
+              number: 80

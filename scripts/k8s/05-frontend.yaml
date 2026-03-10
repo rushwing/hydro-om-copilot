@@ -1,0 +1,108 @@
+# =============================================================================
+# Frontend — React SPA (nginx on CentOS Stream 9)
+#
+# Image: ${REGISTRY}/hydro-om-frontend:${IMAGE_TAG}
+#
+# The nginx container serves static SPA files and optionally proxies /diagnosis/
+# to the backend. In a K8s setup, the Ingress in 06-ingress.yaml handles
+# the /diagnosis/ → backend routing instead, so BACKEND_URL is only needed
+# when running WITHOUT the Ingress (e.g., testing with NodePort directly).
+# =============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hydro-om-frontend
+  namespace: hydro-om
+  labels:
+    app.kubernetes.io/name: hydro-om-copilot
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hydro-om-copilot
+      app.kubernetes.io/component: frontend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: hydro-om-copilot
+        app.kubernetes.io/component: frontend
+    spec:
+      securityContext:
+        runAsUser:    1001
+        runAsGroup:   0
+        fsGroup:      0
+        runAsNonRoot: true
+      automountServiceAccountToken: false
+
+      containers:
+      - name: frontend
+        image: "${REGISTRY:+${REGISTRY}/}hydro-om-frontend:${IMAGE_TAG:-latest}"
+        imagePullPolicy: IfNotPresent
+
+        ports:
+        - name: http
+          containerPort: 80
+
+        env:
+        # Points nginx proxy to backend K8s service.
+        # With split-path Ingress (06-ingress.yaml), nginx proxy is bypassed
+        # and this value is unused — keep it for non-Ingress deployments.
+        - name: BACKEND_URL
+          value: "http://hydro-om-backend:8000"
+
+        resources:
+          requests:
+            cpu:    "50m"
+            memory: "64Mi"
+          limits:
+            cpu:    "500m"
+            memory: "256Mi"
+
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds:       10
+          failureThreshold:    3
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds:       30
+          failureThreshold:    5
+
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/component: frontend
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hydro-om-frontend
+  namespace: hydro-om
+  labels:
+    app.kubernetes.io/name: hydro-om-copilot
+    app.kubernetes.io/component: frontend
+spec:
+  selector:
+    app.kubernetes.io/name: hydro-om-copilot
+    app.kubernetes.io/component: frontend
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+  type: ClusterIP

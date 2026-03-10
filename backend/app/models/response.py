@@ -10,6 +10,12 @@ class RiskLevel(StrEnum):
     CRITICAL = "critical"
 
 
+class DiagnosisTopic(StrEnum):
+    VIBRATION_SWING = "vibration_swing"
+    GOVERNOR_OIL_PRESSURE = "governor_oil_pressure"
+    BEARING_TEMP_COOLING = "bearing_temp_cooling"
+
+
 class RootCause(BaseModel):
     """A single root-cause hypothesis with supporting evidence."""
 
@@ -37,10 +43,7 @@ class DiagnosisResult(BaseModel):
 
     session_id: str
     unit_id: str | None = None
-    topic: str | None = Field(
-        default=None,
-        description="Routed topic: vibration_swing | governor_oil_pressure | bearing_temp_cooling",
-    )
+    topic: DiagnosisTopic | None = Field(default=None)
     root_causes: list[RootCause] = Field(default_factory=list)
     check_steps: list[CheckStep] = Field(default_factory=list)
     risk_level: RiskLevel = RiskLevel.MEDIUM

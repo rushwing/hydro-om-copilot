@@ -1,0 +1,38 @@
+# =============================================================================
+# Kustomize base configuration
+# Apply with: kustomize build scripts/k8s | kubectl apply -f -
+# Or via:     bash scripts/docker/deploy-k8s.sh apply
+#
+# For multi-env overlays, create:
+#   scripts/k8s/overlays/staging/kustomization.yaml
+#   scripts/k8s/overlays/prod/kustomization.yaml
+# =============================================================================
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: hydro-om
+
+resources:
+- 00-namespace.yaml
+- 01-configmap.yaml
+- 02-secret-template.yaml
+- 03-qdrant.yaml
+- 04-backend.yaml
+- 05-frontend.yaml
+- 06-ingress.yaml
+
+# ── Image tag management ──────────────────────────────────────────────────────
+# Set by deploy-k8s.sh: kustomize edit set image ...
+images:
+- name: hydro-om-backend
+  newName: hydro-om-backend
+  newTag: latest
+- name: hydro-om-frontend
+  newName: hydro-om-frontend
+  newTag: latest
+
+# ── Common labels applied to all resources ───────────────────────────────────
+commonLabels:
+  app.kubernetes.io/part-of: hydro-om-copilot
+  app.kubernetes.io/managed-by: kustomize

@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_graph
 from app.models.request import DiagnosisRequest
-from app.models.response import CheckStep, DiagnosisResult, RiskLevel, RootCause
+from app.models.response import CheckStep, DiagnosisTopic, DiagnosisResult, RiskLevel, RootCause
 from app.utils.streaming import sse_format
 
 router = APIRouter(prefix="/diagnosis", tags=["diagnosis"])
@@ -82,10 +82,11 @@ async def run_diagnosis(
         # Build final structured result from accumulated node outputs
         try:
             merged = {**initial_state, **accumulated}
+            raw_topic = merged.get("topic")
             result = DiagnosisResult(
                 session_id=session_id,
                 unit_id=(merged.get("parsed_symptom") or {}).get("unit_id"),
-                topic=merged.get("topic"),
+                topic=DiagnosisTopic(raw_topic) if raw_topic else None,
                 root_causes=[RootCause(**rc) for rc in merged.get("root_causes", [])],
                 check_steps=[CheckStep(**cs) for cs in merged.get("check_steps", [])],
                 risk_level=RiskLevel(merged.get("risk_level", "medium")),

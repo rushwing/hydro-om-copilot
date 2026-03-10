@@ -1,0 +1,107 @@
+# =============================================================================
+# Hydro O&M Copilot — Production Docker Compose (CentOS Stream 9 images)
+#
+# Prerequisites:
+#   - Run `scripts/docker/build.sh` first to build images
+#   - Copy .env.example → .env and fill in ANTHROPIC_API_KEY
+#   - Run `scripts/docker/deploy-compose.sh` to start
+#
+# Differences from docker-compose.yml (dev):
+#   - Uses pre-built images (no build: sections)
+#   - No source code volume mounts
+#   - API_RELOAD=false
+#   - VECTOR_STORE_TYPE=qdrant (Qdrant service required)
+#   - restart: unless-stopped on all services
+#   - Pinned Qdrant version
+# =============================================================================
+
+version: "3.9"
+
+services:
+
+  # ── Backend: FastAPI + LangGraph ────────────────────────────────────────────
+  backend:
+    image: "${REGISTRY:-}${REGISTRY:+/}hydro-om-backend:${IMAGE_TAG:-latest}"
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"   # bind to loopback; expose via reverse proxy in prod
+    volumes:
+      - knowledge_base:/app/knowledge_base
+      - models_cache:/app/models   # HuggingFace / sentence-transformers cache
+    env_file:
+      - .env
+    environment:
+      - API_RELOAD=false
+      - VECTOR_STORE_TYPE=qdrant
+      - QDRANT_URL=http://qdrant:6333
+      - KB_DOCS_DIR=/app/knowledge_base/docs_internal
+      - HF_HOME=/app/models
+      - SENTENCE_TRANSFORMERS_HOME=/app/models
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3.11", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 120s   # model loading can take 1-2 minutes
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ── Frontend: React SPA (nginx) ─────────────────────────────────────────────
+  frontend:
+    image: "${REGISTRY:-}${REGISTRY:+/}hydro-om-frontend:${IMAGE_TAG:-latest}"
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    environment:
+      - BACKEND_URL=http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:80/"]
+      interval: 15s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Qdrant: Vector database ──────────────────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:v1.11.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6333:6333"   # gRPC/REST; loopback only in prod
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:6333/healthz"]
+      interval: 15s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+volumes:
+  knowledge_base:
+    driver: local
+  models_cache:
+    driver: local
+  qdrant_data:
+    driver: local
