@@ -1,142 +1,174 @@
 # Hydro O&M Copilot
 
-Hydro O&M Copilot is an MVP knowledge-centric agent for hydro unit anomaly diagnosis and defect elimination assistance. It is designed for dispatcher, shift operator, and maintenance engineer workflows in hydropower plants.
+Hydro O&M Copilot 是一个面向水电机组异常诊断与消缺辅助的智能运维 MVP 项目，服务对象为水电厂运行值班员、检修工程师及相关生产管理人员。
 
-## Version
+## 版本说明
 
-Current repository baseline: `V0.0.1`
+当前仓库基线版本：`V0.0.1`
 
-Current MVP status:
+当前 MVP 特征：
 
-- Focused on RAG-first diagnosis assistance, not autonomous control.
-- Focused on three high-frequency hydro unit anomaly topics.
-- Built for prototype demonstration and progressive knowledge base iteration.
+- 以 RAG 知识增强为主，不涉及自主控制。
+- 聚焦水电机组三类高频异常主题。
+- 用于原型验证、演示汇报和后续知识库迭代。
 
-## Scope
+## 项目范围
 
-### In Scope
+### 当前纳入范围
 
-- Hydro turbine-generator unit anomaly triage from natural language descriptions.
-- Progressive disclosure from coarse symptom routing to topic-specific diagnosis guidance.
-- Retrieval over internal diagnosis guides, rule base, and case base.
-- Output of symptom extraction, root-cause ranking, missing confirmation items, inspection steps, risk reminders, and shift-report/draft defect text.
-- Initial knowledge hooks for future station-specific data import.
+- 针对水轮发电机组异常文本描述的智能诊断辅助。
+- 基于渐进式披露的异常路由与专题诊断。
+- 面向内部知识库的规程、规则、案例联合检索。
+- 输出症状抽取、根因排序、待确认项、检查步骤、风险提示、班组汇报/缺陷单草稿。
+- 预留电厂现场化数据接入能力。
 
-### Current Topic Scope
+### 当前专题范围
 
-1. Vibration and shaft swing anomalies.
-2. Governor oil pressure and hydraulic control anomalies.
-3. Bearing temperature rise and cooling-water anomalies.
+1. 机组振动与摆度异常。
+2. 调速器油压与液压控制异常。
+3. 轴承温升与冷却水异常。
 
-### Out of Scope for V0.0.1
+### V0.0.1 暂不包含
 
-- Direct closed-loop control or protection action execution.
-- Full online historian integration.
-- Final operating instruction replacement for plant procedures.
-- Broad equipment coverage outside the three current anomaly domains.
-- High-confidence image-native diagnosis across arbitrary plant HMI screenshots.
+- 保护动作或控制指令的自动执行。
+- 与实时历史数据库、SCADA/DCS 的完整在线对接。
+- 替代电厂正式运行规程、事故处理规程和调度指令。
+- 超出当前三类异常主题的全设备覆盖。
+- 对任意监控截图进行高置信度图像原生诊断。
 
-## Product Goal
+## 一句话目标
 
-When an operator enters a hydro unit anomaly description, or uploads a trend chart/alarm screenshot, the system should assist with:
+当运行或检修人员输入一段机组异常描述，或上传趋势图/报警截图后，系统能够辅助完成：
 
-- Symptom extraction.
-- Procedure/rule/case retrieval.
-- Root-cause ranking.
-- Recommended on-site inspection sequence.
-- Risk reminders.
-- Shift report and defect-ticket draft generation.
+- 异常症状抽取。
+- 规程、规则、案例联查。
+- 根因排序。
+- 现场检查顺序建议。
+- 风险提示。
+- 班组汇报与缺陷单草稿生成。
 
-## Architecture
+## 系统架构
 
-```mermaid
-graph TD
-    UI["Web UI / Copilot UI<br/>文本输入 / 图像上传 / 结构化回显"]
-    ORCH["Task Orchestrator<br/>LangGraph / Multi-Agent Workflow"]
-    P1["Symptom Parsing Agent"]
-    P2["Procedure & Rule Retrieval Agent"]
-    P3["Case Retrieval Agent"]
-    P4["Image Understanding Agent"]
-    P5["Diagnostic Reasoning Agent"]
-    P6["Disposition & Reporting Agent"]
-    KB["Knowledge Base<br/>L0-L3 layered docs + vector/BM25/reranker"]
-    SITE["Station-Specific Data Layer<br/>台账 / TAG / 定值 / 缺陷 / 检修 / 规程版本"]
+当前 MVP 建议采用“任务编排 + 专业 Agent + 分层知识库”的架构。
 
-    UI --> ORCH
-    ORCH --> P1
-    ORCH --> P2
-    ORCH --> P3
-    ORCH --> P4
-    P1 --> P5
-    P2 --> P5
-    P3 --> P5
-    P4 --> P5
-    P5 --> P6
-    KB --> P2
-    KB --> P3
-    KB --> P5
-    SITE --> KB
+```text
++----------------------------------------------------------------------------------+
+|                           Hydro O&M Copilot                                      |
+|                    水电机组异常诊断与消缺辅助智能体                               |
++----------------------------------------------------------------------------------+
+
++----------------------------------+
+|           交互层 / Web UI         |
+|  - 异常文本输入                   |
+|  - 趋势图/报警截图上传            |
+|  - 结构化结果回显                 |
++-----------------+----------------+
+                  |
+                  v
++----------------------------------+
+|      任务编排层 / Orchestrator    |
+|   LangGraph / Multi-Agent Flow    |
++----+--------------+--------------+
+     |              |              |
+     v              v              v
++-----------+  +-----------+  +-----------+  +----------------+
+| 症状解析   |  | 规程规则检索|  | 案例检索   |  | 图像理解/截图解析 |
+| Agent      |  | Agent     |  | Agent     |  | Agent          |
++-----+------+  +-----+-----+  +-----+-----+  +--------+-------+
+      \               |              |                 /
+       \              |              |                /
+        +-------------+--------------+---------------+
+                                      |
+                                      v
+                         +---------------------------+
+                         |      诊断推理 Agent        |
+                         |  - 根因排序                |
+                         |  - 依据归因                |
+                         |  - 待确认项生成            |
+                         +-------------+-------------+
+                                       |
+                                       v
+                         +---------------------------+
+                         |      处置与汇报 Agent      |
+                         |  - 检查步骤                |
+                         |  - 风险提示                |
+                         |  - 汇报/缺陷单草稿         |
+                         +-------------+-------------+
+                                       |
+                                       v
+                         +---------------------------+
+                         |      分层知识库 / KB       |
+                         |  - L0-L3 文档知识层        |
+                         |  - 向量检索 / BM25 / 重排  |
+                         |  - 现场化模板与后续接入    |
+                         +---------------------------+
 ```
 
-## Knowledge Base
+## 知识库分层设计
 
-The current knowledge base is intentionally layered for progressive disclosure and more precise RAG routing.
+当前知识库采用 L0-L3 四层结构，服务于渐进式披露和更精准的 RAG 路由。
 
-```mermaid
-graph TD
-    L0["L0 Method Layer<br/>知识总纲 / 推理骨架"]
-    L1A["L1 Entry Routing Layer<br/>核心故障初步诊断指南"]
-    L1B["L1 Overview Index Layer<br/>典型异常诊断与处置总览表"]
-    L2A["L2 Topic Guide<br/>振动与摆度异常"]
-    L2B["L2 Topic Guide<br/>调速器油压异常"]
-    L2C["L2 Topic Guide<br/>轴承温升与冷却水异常"]
-    L2D["L2 Support Layer<br/>规则库指标规范"]
-    L2E["L2 Support Layer<br/>故障诊断与典型案例集"]
-    L3["L3 Site-Specific Stub Layer<br/>台账 / TAG / 定值 / 缺陷 / 检修 / 规程版本"]
-
-    L0 --> L1A
-    L0 --> L1B
-    L1A --> L2A
-    L1A --> L2B
-    L1A --> L2C
-    L1B --> L2A
-    L1B --> L2B
-    L1B --> L2C
-    L2D --> L2A
-    L2D --> L2B
-    L2D --> L2C
-    L2E --> L2A
-    L2E --> L2B
-    L2E --> L2C
-    L2A --> L3
-    L2B --> L3
-    L2C --> L3
+```text
+L0 方法总纲层
+|
++-- 水电机组 AI 智能诊断知识库构建指南
+|    作用：定义机理分析、联动逻辑、频谱特征、推理树等方法骨架
+|
+L1 入口与索引层
+|
++-- 水轮发电机组核心故障初步诊断指南
+|    作用：根据用户输入进行三大主题初步分流
+|
++-- 水电机组典型异常诊断与处置手册
+|    作用：提供总览索引，便于从概览跳转到专题
+|
+L2 专题与横向支撑层
+|
++-- 水电机组振动与摆度异常诊断与处置指南
+|    作用：振摆专题诊断、参数联动、SOP、案例
+|
++-- 水电机组调速器油压异常诊断与处置指南
+|    作用：油压专题诊断、联锁逻辑、处置建议、案例
+|
++-- 水电机组轴承温升与冷却水异常诊断与处置指南
+|    作用：温升/冷却专题诊断、判据、处置与案例
+|
++-- 水电站智能运维规则库指标规范
+|    作用：提供硬阈值、操作规范、管理制度
+|
++-- 发电机组故障诊断与典型案例集
+|    作用：提供相似案例、经验反馈、案例证据
+|
+L3 现场化层（当前为模板占位）
+|
++-- 现场化知识接入导航
++-- 机组台账模板
++-- 测点 Tag 映射模板
++-- 保护定值模板
++-- 受限负荷区模板
++-- 历次缺陷模板
++-- 检修履历模板
++-- 厂站规程版本模板
+     作用：为后续导入具体电厂、具体机组的生产数据做准备
 ```
 
-### Layer Definitions
+## 当前文档清单
 
-- `L0`: methodology and inference design. Used to guide reasoning patterns and chunk taxonomy.
-- `L1`: entry routing and overview index. Used to map user symptoms into the right diagnosis path.
-- `L2`: topic diagnosis guides plus horizontal support documents for rules and cases.
-- `L3`: station/unit-specific stubs reserved for future import of plant-specific operational knowledge.
-
-### Current Document Map
-
-| Layer | Role | Document |
+| 层级 | 角色 | 文档 |
 | --- | --- | --- |
-| L0 | Knowledge design and reasoning skeleton | `knowledge_base/docs_internal/水电机组 AI 智能诊断知识库构建指南.md` |
-| L1 | Coarse triage router | `knowledge_base/docs_internal/水轮发电机组核心故障初步诊断指南.md` |
-| L1 | Overview index | `knowledge_base/docs_internal/水电机组典型异常诊断与处置手册.md` |
-| L2 | Topic guide | `knowledge_base/docs_internal/水电机组振动与摆度异常诊断与处置指南.md` |
-| L2 | Topic guide | `knowledge_base/docs_internal/水电机组调速器油压异常诊断与处置指南.md` |
-| L2 | Topic guide | `knowledge_base/docs_internal/水电机组轴承温升与冷却水异常诊断与处置指南.md` |
-| L2 | Support rule base | `knowledge_base/docs_internal/水电站智能运维规则库指标规范.md` |
-| L2 | Support case base | `knowledge_base/docs_internal/发电机组故障诊断与典型案例集.md` |
-| L3 | Site-specific ingestion stubs | `knowledge_base/docs_internal/L3_现场化层_stubs/` |
+| L0 | 方法总纲 | `knowledge_base/docs_internal/水电机组 AI 智能诊断知识库构建指南.md` |
+| L1 | 入口路由 | `knowledge_base/docs_internal/水轮发电机组核心故障初步诊断指南.md` |
+| L1 | 总览索引 | `knowledge_base/docs_internal/水电机组典型异常诊断与处置手册.md` |
+| L2 | 专题指南 | `knowledge_base/docs_internal/水电机组振动与摆度异常诊断与处置指南.md` |
+| L2 | 专题指南 | `knowledge_base/docs_internal/水电机组调速器油压异常诊断与处置指南.md` |
+| L2 | 专题指南 | `knowledge_base/docs_internal/水电机组轴承温升与冷却水异常诊断与处置指南.md` |
+| L2 | 横向规则库 | `knowledge_base/docs_internal/水电站智能运维规则库指标规范.md` |
+| L2 | 横向案例库 | `knowledge_base/docs_internal/发电机组故障诊断与典型案例集.md` |
+| L3 | 现场化模板目录 | `knowledge_base/docs_internal/L3_现场化层_stubs/` |
 
-## Progressive Disclosure Design
+## 渐进式披露设计
 
-Each L0/L1/L2 document is being normalized with:
+当前 L0/L1/L2 文档已经统一补充了以下结构化字段：
 
 - `doc_id`
 - `doc_level`
@@ -148,27 +180,34 @@ Each L0/L1/L2 document is being normalized with:
 - `related_cases`
 - `site_stub_refs`
 
-This structure is intended to support:
+这套结构主要用于：
 
-- deterministic symptom routing before free-form generation
-- topic-constrained retrieval
-- explanation traceability
-- easier future conversion into JSON or graph nodes
+- 先路由、后生成，减少大模型直接自由发挥。
+- 在专题范围内做更精确的 RAG 检索。
+- 保留“结论来自哪里”的解释链路。
+- 为后续转成 JSON、图谱或知识节点做准备。
 
-## L3 Site-Specific Stub Layer
+## L3 现场化层说明
 
-The current MVP reserves templates for future plant/unit data import:
+V0.0.1 版本已经预留现场化模板，方便后续导入：
 
-- Unit ledger.
-- Tag mapping.
-- Protection setpoints.
-- Restricted load zones.
-- Historical defects.
-- Maintenance history.
-- Procedure/version registry.
+- 机组台账。
+- 测点 Tag 映射。
+- 保护定值。
+- 受限负荷区。
+- 历次缺陷。
+- 检修履历。
+- 厂站规程版本。
 
-These stubs are placeholders only in `V0.0.1`, so the current MVP remains a generic hydro O&M copilot rather than a plant-locked expert system.
+当前这些文件仅为模板占位，因此本版本仍然是“通用型水电运维知识助手”，还不是某一座具体电厂、某一台具体机组的专属专家系统。
 
-## Safety Positioning
+## 安全定位
 
-This repository supports diagnosis assistance and draft generation. It does not replace plant procedures, relay protection logic, or operator responsibility. Any advice involving load reduction, shutdown, protection bypass, or emergency handling must be checked against plant-approved rules and real-time operating conditions.
+本项目定位为“诊断辅助与文稿生成辅助”，不替代：
+
+- 电厂正式规程。
+- 继电保护与联锁逻辑。
+- 当值人员的操作责任。
+- 调度命令与生产指挥流程。
+
+凡涉及降负荷、停机、保护动作、强制切换、事故处置的建议，均应以厂站正式规程、实时工况和人工复核为准。
