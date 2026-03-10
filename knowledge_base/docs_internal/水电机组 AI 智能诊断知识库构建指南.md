@@ -1,6 +1,37 @@
+---
+doc_id: L0.METHOD.001
+doc_level: L0
+knowledge_type: methodology
+domain: hydro_om_copilot
+route_keys:
+  - diagnosis_methodology
+  - failure_mechanism
+  - multi_parameter_linkage
+  - spectral_feature
+  - inference_tree
+upstream_docs: []
+downstream_docs:
+  - L1.ROUTER.001
+  - L1.OVERVIEW.001
+  - L2.SUPPORT.RULE.001
+  - L2.SUPPORT.CASE.001
+site_stub_refs:
+  - L3.SITE.000
+---
+
 # 水电机组 AI 智能诊断知识库构建指南
 
 构建水电机组 AI 诊断知识库，核心在于将碎片化的专家经验和运行现象，转化为机器可读的“逻辑图谱”。以下是为您提取并结构化整理的四大核心维度内容，可直接作为智能诊断 Agent 的底层推理引擎：
+
+## 渐进式披露导航
+
+| 键值 | 用途 | 跳转文档 |
+| --- | --- | --- |
+| `diagnosis_methodology` | 查看总体推理骨架与知识分层 | [水轮发电机组核心故障初步诊断指南](./水轮发电机组核心故障初步诊断指南.md) |
+| `failure_mechanism` | 按机理维度设计检索与推理 | [水电机组典型异常诊断与处置手册](./水电机组典型异常诊断与处置手册.md) |
+| `rule_base_entry` | 将硬阈值和操作红线接入规则引擎 | [水电站智能运维规则库指标规范](./水电站智能运维规则库指标规范.md) |
+| `case_base_entry` | 用相似案例支撑根因解释 | [发电机组故障诊断与典型案例集](./发电机组故障诊断与典型案例集.md) |
+| `site_profile` | 后续接入电厂现场化数据 | [现场化知识接入导航](./L3_现场化层_stubs/00_现场化知识接入导航.md) |
 
 # 一、 故障机理分析库 (Failure Mechanism Analysis)
 
