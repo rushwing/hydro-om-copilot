@@ -1,0 +1,47 @@
+# =============================================================================
+# Non-secret runtime configuration.
+# Secrets (ANTHROPIC_API_KEY, etc.) go in 02-secret-template.yaml.
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hydro-om-config
+  namespace: hydro-om
+  labels:
+    app.kubernetes.io/name: hydro-om-copilot
+data:
+  # ── API ──────────────────────────────────────────────────────────────────
+  API_HOST:    "0.0.0.0"
+  API_PORT:    "8000"
+  API_RELOAD:  "false"
+
+  # ── LLM ──────────────────────────────────────────────────────────────────
+  LLM_MODEL:       "claude-sonnet-4-6"
+  LLM_TEMPERATURE: "0.1"
+
+  # ── Vector store (use Qdrant in K8s, not ChromaDB) ───────────────────────
+  VECTOR_STORE_TYPE: "qdrant"
+  QDRANT_URL:        "http://qdrant:6333"   # matches Service name in 03-qdrant.yaml
+  QDRANT_COLLECTION: "hydro_kb"
+
+  # ── Embedding / Reranker ─────────────────────────────────────────────────
+  EMBEDDING_MODEL:  "BAAI/bge-large-zh-v1.5"
+  RERANKER_MODEL:   "BAAI/bge-reranker-v2-m3"
+  RERANKER_TOP_K:   "5"
+
+  # ── Knowledge base ────────────────────────────────────────────────────────
+  # Mounted from PVC hydro-om-knowledge-base
+  KB_DOCS_DIR: "/app/knowledge_base/docs_internal"
+
+  # ── Model cache ───────────────────────────────────────────────────────────
+  # Mounted from PVC hydro-om-models-cache; avoids re-downloading ~4GB on restart
+  HF_HOME:                    "/app/models"
+  SENTENCE_TRANSFORMERS_HOME: "/app/models"
+
+  # ── CORS ──────────────────────────────────────────────────────────────────
+  # Update to your actual domain(s) in production
+  CORS_ORIGINS: "https://hydro-om.example.com"
+
+  # ── LangSmith (disabled by default — see docs/05-langsmith-integration.md) ─
+  LANGCHAIN_TRACING_V2: "false"
+  LANGCHAIN_PROJECT:    "hydro-om-copilot"

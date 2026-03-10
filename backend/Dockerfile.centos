@@ -1,0 +1,98 @@
+# =============================================================================
+# Hydro O&M Copilot — Backend (CentOS Stream 9)
+# Multi-stage build: builder → runtime
+#
+# K8s readiness:
+#   - Non-root UID 1001 / GID 0 (OpenShift-compatible arbitrary UID)
+#   - OCI labels for image management
+#   - ENTRYPOINT + CMD separation (CMD overridable in Pod spec)
+#   - HEALTHCHECK for local/compose; liveness/readiness in K8s Deployment
+#   - HF_HOME / SENTENCE_TRANSFORMERS_HOME → mount a PVC to persist models
+# =============================================================================
+
+# ── Stage 1: builder ─────────────────────────────────────────────────────────
+FROM quay.io/centos/centos:stream9 AS builder
+
+# Install Python 3.11 + build tools (needed for native wheels: e.g., FlagEmbedding)
+RUN dnf install -y \
+        python3.11 \
+        python3.11-devel \
+        gcc \
+        gcc-c++ \
+        make \
+        git \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf
+
+# Bootstrap pip and create an isolated venv
+RUN python3.11 -m ensurepip --upgrade \
+    && python3.11 -m pip install --no-cache-dir --upgrade pip wheel
+
+RUN python3.11 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /build
+
+# Copy build manifest first (layer-cache friendly)
+COPY pyproject.toml ./
+# Copy app package so hatchling can resolve the package root
+COPY app/ ./app/
+
+# Install all runtime dependencies into the venv
+RUN pip install --no-cache-dir --upgrade pip wheel \
+    && pip install --no-cache-dir .
+
+
+# ── Stage 2: runtime ─────────────────────────────────────────────────────────
+FROM quay.io/centos/centos:stream9 AS runtime
+
+LABEL org.opencontainers.image.title="hydro-om-copilot-backend" \
+      org.opencontainers.image.description="Hydro O&M AI Copilot — FastAPI + LangGraph backend" \
+      org.opencontainers.image.source="https://github.com/rushwing/hydro-om-copilot" \
+      org.opencontainers.image.licenses="MIT"
+
+# Tesseract OCR (Chinese Simplified + English) via EPEL
+RUN dnf install -y epel-release \
+    && dnf install -y \
+        python3.11 \
+        tesseract \
+        tesseract-langpack-chi_sim \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf
+
+# Copy pre-built venv from builder (same path keeps shebangs valid)
+COPY --from=builder /opt/venv /opt/venv
+
+WORKDIR /app
+
+# Copy application source
+COPY app/ ./app/
+
+# Create runtime directories and a non-root system user
+# GID 0 (root group) enables OpenShift arbitrary-UID compatibility
+RUN useradd -r -u 1001 -g 0 -s /sbin/nologin -d /app appuser \
+    && mkdir -p knowledge_base models \
+    && chown -R 1001:0 /app \
+    && chmod -R g=u /app
+
+USER 1001
+
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    # HuggingFace / sentence-transformers model cache
+    # In K8s: mount a PVC here so models survive pod restarts
+    HF_HOME=/app/models \
+    SENTENCE_TRANSFORMERS_HOME=/app/models
+
+EXPOSE 8000
+
+# Local/compose health check; in K8s use liveness/readiness probes instead
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
+    CMD python3.11 -c \
+        "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" \
+        || exit 1
+
+# CMD is overridable in docker-compose / K8s Pod spec
+ENTRYPOINT ["uvicorn", "app.main:app"]
+CMD ["--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers"]
