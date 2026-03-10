@@ -1,7 +1,7 @@
 // ── Enums ────────────────────────────────────────────────────────────────────
 
 export type RiskLevel = "low" | "medium" | "high" | "critical";
-export type DiagnosisTopic = "vibration_swing" | "governor_oil" | "bearing_temp";
+export type DiagnosisTopic = "vibration_swing" | "governor_oil_pressure" | "bearing_temp_cooling";
 
 // ── Structured output models (mirrors backend Pydantic) ──────────────────────
 

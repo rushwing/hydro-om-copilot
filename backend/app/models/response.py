@@ -39,7 +39,7 @@ class DiagnosisResult(BaseModel):
     unit_id: str | None = None
     topic: str | None = Field(
         default=None,
-        description="Routed topic: vibration_swing | governor_oil | bearing_temp",
+        description="Routed topic: vibration_swing | governor_oil_pressure | bearing_temp_cooling",
     )
     root_causes: list[RootCause] = Field(default_factory=list)
     check_steps: list[CheckStep] = Field(default_factory=list)

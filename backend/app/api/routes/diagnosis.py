@@ -10,9 +10,11 @@ from fastapi.responses import StreamingResponse
 from app.api.deps import get_graph
 from app.models.request import DiagnosisRequest
 from app.models.response import CheckStep, DiagnosisResult, RiskLevel, RootCause
-from app.utils.streaming import sse_format, stream_agent_events
+from app.utils.streaming import sse_format
 
 router = APIRouter(prefix="/diagnosis", tags=["diagnosis"])
+
+_NODE_NAMES = {"symptom_parser", "image_agent", "retrieval", "reasoning", "report_gen"}
 
 
 @router.post("/run")
@@ -25,6 +27,10 @@ async def run_diagnosis(
 
     The client should use EventSource or fetch + ReadableStream to consume events.
     Event types: status | token | result | error
+
+    Single-invocation pattern: astream_events accumulates on_chain_end outputs
+    per node into `accumulated`, then builds DiagnosisResult without a second
+    graph.ainvoke call.
     """
     session_id = request.session_id or str(uuid.uuid4())
 
@@ -48,27 +54,45 @@ async def run_diagnosis(
     }
 
     async def event_generator():
-        final_state = None
+        accumulated: dict = {}
 
-        async for chunk in stream_agent_events(graph, initial_state):
-            yield chunk
-
-        # After streaming completes, emit the final structured result
-        # (LangGraph astream_events doesn't directly return final state;
-        #  we re-invoke to get final state for the result event)
         try:
-            final_state = await graph.ainvoke(initial_state)
+            async for event in graph.astream_events(initial_state, version="v2"):
+                kind = event.get("event", "")
+                name = event.get("name", "")
+
+                if kind == "on_chain_start" and name in _NODE_NAMES:
+                    yield await sse_format("status", {"node": name, "phase": "start"})
+
+                elif kind == "on_chain_end" and name in _NODE_NAMES:
+                    yield await sse_format("status", {"node": name, "phase": "end"})
+                    output = event.get("data", {}).get("output") or {}
+                    if isinstance(output, dict):
+                        accumulated.update(output)
+
+                elif kind == "on_chat_model_stream":
+                    chunk = event.get("data", {}).get("chunk")
+                    if chunk and hasattr(chunk, "content") and chunk.content:
+                        yield await sse_format("token", {"text": chunk.content})
+
+        except Exception as exc:
+            yield await sse_format("error", {"message": str(exc)})
+            return
+
+        # Build final structured result from accumulated node outputs
+        try:
+            merged = {**initial_state, **accumulated}
             result = DiagnosisResult(
                 session_id=session_id,
-                unit_id=(final_state.get("parsed_symptom") or {}).get("unit_id"),
-                topic=final_state.get("topic"),
-                root_causes=[RootCause(**rc) for rc in final_state.get("root_causes", [])],
-                check_steps=[CheckStep(**cs) for cs in final_state.get("check_steps", [])],
-                risk_level=RiskLevel(final_state.get("risk_level", "medium")),
-                escalation_required=final_state.get("escalation_required", False),
-                escalation_reason=final_state.get("escalation_reason"),
-                report_draft=final_state.get("report_draft"),
-                sources=final_state.get("sources", []),
+                unit_id=(merged.get("parsed_symptom") or {}).get("unit_id"),
+                topic=merged.get("topic"),
+                root_causes=[RootCause(**rc) for rc in merged.get("root_causes", [])],
+                check_steps=[CheckStep(**cs) for cs in merged.get("check_steps", [])],
+                risk_level=RiskLevel(merged.get("risk_level", "medium")),
+                escalation_required=merged.get("escalation_required", False),
+                escalation_reason=merged.get("escalation_reason"),
+                report_draft=merged.get("report_draft"),
+                sources=merged.get("sources", []),
             )
             yield await sse_format("result", result.model_dump())
         except Exception as exc:

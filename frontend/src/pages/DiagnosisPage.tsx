@@ -12,8 +12,8 @@ import type { DiagnosisRequest, DiagnosisResult } from "@/types/diagnosis";
 
 const TOPIC_LABELS: Record<string, string> = {
   vibration_swing: "振动与摆度",
-  governor_oil: "调速器油压",
-  bearing_temp: "轴承温升",
+  governor_oil_pressure: "调速器油压",
+  bearing_temp_cooling: "轴承温升",
 };
 
 function getSourceColor(docId: string): string {

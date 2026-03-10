@@ -253,7 +253,7 @@ select = ["E", "F", "I", "UP"]
 |-----------|----------|------|--------------|
 | ChromaDB vs Qdrant | ChromaDB（dev） | 无法多进程写入 | 生产部署 / 多电厂 |
 | BM25 Pickle vs ES | Pickle 文件 | 无法增量更新，重建成本 O(n) | 文档量 > 10K / 在线更新需求 |
-| 双调用模式 | astream + ainvoke | LLM 调用额外触发一次 | P2 优化：在 astream_events 中捕获最终 state |
+| ~~双调用模式~~ (**已废弃**) | ~~astream + ainvoke~~ → 单次 astream_events + on_chain_end 累积 | 双调用：LLM 成本翻倍、延迟翻倍、结果不一致风险 | 已修复，禁止在生产路径中使用 |
 | 关键词路由 vs LLM 分类 | 关键词打分 | 不覆盖新故障类型 | 故障类型 > 10 类 / 召回率 < 80% |
 | 本地嵌入 vs API 嵌入 | 本地 BGE | 首次加载 ~2GB 模型权重 | GPU 推理加速需求 / 云端部署 |
 | SSE vs WebSocket | SSE | 单向推送，无法客户端 → 服务端流 | 需要人机交互节点（human-in-the-loop） |
