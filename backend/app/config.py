@@ -39,5 +39,20 @@ class Settings(BaseSettings):
     langchain_api_key: str = ""
     langchain_project: str = "hydro-om-copilot"
 
+    # Sensor / pseudo-random fault generation
+    auto_random_problems_gen: bool = Field(
+        default=False, validation_alias="AUTO_RANDOM_PROBLEMS_GEN"
+    )
+    sensor_poll_interval_s: int = Field(
+        default=15, validation_alias="SENSOR_POLL_INTERVAL"
+    )
+    fault_collection_window_s: int = Field(
+        default=60, validation_alias="FAULT_COLLECTION_WINDOW"
+    )
+    diagnosis_cooldown_s: int = Field(
+        default=300, validation_alias="DIAGNOSIS_COOLDOWN"
+    )
+    fault_queue_max: int = Field(default=5, validation_alias="FAULT_QUEUE_MAX")
+
 
 settings = Settings()

@@ -24,6 +24,7 @@
 | 重排序 | BAAI/bge-reranker-v2-m3 | cross-encoder/ms-marco | 同家族模型，与 bge 嵌入协同效果好 |
 | 稀疏检索 | BM25 + jieba | ElasticSearch BM25 | 轻量，无需外部服务，与 RRF 融合简单 |
 | 可观测性 | LangSmith | OpenTelemetry + Jaeger | 原生 LangGraph 集成，prompt 链路可视化 |
+| 传感器模拟 | FastMCP 2.x + MCP 1.x | 自定义 HTTP Mock | MCP 协议标准化，可直接对接真实 PLC/DCS MCP 适配器 |
 
 ---
 
