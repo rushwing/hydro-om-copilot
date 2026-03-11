@@ -11,12 +11,22 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Callable
 
 from app.agents.graph import get_compiled_graph
 from app.store.diagnosis_store import AutoDiagnosisRecord, DiagnosisStore
 from mcp_servers.fault_aggregator import FaultSummary
 
 _logger = logging.getLogger("app.agents.auto_diagnosis")
+
+_AUTO_NODES = {
+    "sensor_reader",
+    "symptom_parser",
+    "image_agent",
+    "retrieval",
+    "reasoning",
+    "report_gen",
+}
 
 
 async def run_auto_diagnosis(
@@ -55,6 +65,8 @@ async def run_auto_diagnosis(
         "escalation_reason": None,
         "report_draft": None,
         "stream_tokens": [],
+        "sensor_reports": [],
+        "sensor_data": [],
         "sources": [],
         "error": None,
     }
@@ -85,6 +97,120 @@ async def run_auto_diagnosis(
     store.push(record)
     _logger.info(
         "auto diagnosis stored | unit=%s session=%s risk=%s error=%s",
+        summary.unit_id,
+        session_id,
+        record.risk_level,
+        record.error,
+    )
+    return record
+
+
+async def run_auto_diagnosis_streaming(
+    summary: FaultSummary,
+    store: DiagnosisStore,
+    session_id: str,
+    on_phase: Callable[[str], None] | None = None,
+    on_token: Callable[[str], None] | None = None,
+    on_sensor_data: Callable[[list[dict]], None] | None = None,
+) -> AutoDiagnosisRecord:
+    """
+    Auto graph version using astream_events(); callbacks update service state.
+
+    Runs the auto-diagnosis graph (sensor_reader → symptom_parser → ... → report_gen)
+    and streams phase/token updates via callbacks for live UI display.
+    """
+    from app.agents.graph import get_compiled_auto_graph
+
+    auto_graph = get_compiled_auto_graph()
+
+    raw_query = (
+        summary.symptom_text
+        if summary.unit_id in summary.symptom_text
+        else f"【{summary.unit_id}】{summary.symptom_text}"
+    )
+
+    initial_state = {
+        "session_id": session_id,
+        "raw_query": raw_query,
+        "image_base64": None,
+        "parsed_symptom": None,
+        "ocr_text": None,
+        "topic": None,
+        "retrieved": None,
+        "root_causes": [],
+        "check_steps": [],
+        "risk_level": "medium",
+        "escalation_required": False,
+        "escalation_reason": None,
+        "report_draft": None,
+        "stream_tokens": [],
+        "sensor_reports": [r.model_dump() for r in summary.sensor_reports],
+        "sensor_data": [],
+        "sources": [],
+        "error": None,
+    }
+
+    node_outputs: dict[str, dict] = {}
+    error_str: str | None = None
+
+    try:
+        async for event in auto_graph.astream_events(initial_state, version="v2"):
+            kind = event.get("event", "")
+            name = event.get("name", "")
+
+            if kind == "on_chain_start" and name in _AUTO_NODES:
+                if on_phase:
+                    on_phase(name)
+
+            elif kind == "on_chain_end" and name in _AUTO_NODES:
+                output = (event.get("data") or {}).get("output") or {}
+                if isinstance(output, dict):
+                    node_outputs[name] = output
+                if name == "sensor_reader" and on_sensor_data:
+                    on_sensor_data(output.get("sensor_data", []))
+
+            elif kind == "on_chat_model_stream":
+                chunk = (event.get("data") or {}).get("chunk")
+                if chunk and getattr(chunk, "content", None):
+                    if on_token:
+                        on_token(chunk.content)
+
+    except Exception as exc:
+        _logger.error(
+            "auto diagnosis streaming failed | unit=%s | %s",
+            summary.unit_id,
+            exc,
+            exc_info=True,
+        )
+        error_str = str(exc)
+
+    # Merge node outputs to reconstruct final state fields
+    merged: dict = {}
+    for node_name in ("symptom_parser", "retrieval", "reasoning", "report_gen"):
+        if node_name in node_outputs:
+            merged.update(node_outputs[node_name])
+
+    record = AutoDiagnosisRecord(
+        session_id=session_id,
+        unit_id=summary.unit_id,
+        fault_types=summary.fault_types,
+        symptom_text=summary.symptom_text,
+        risk_level=merged.get("risk_level", "medium"),
+        escalation_required=merged.get("escalation_required", False),
+        escalation_reason=merged.get("escalation_reason"),
+        root_causes=merged.get("root_causes", []),
+        check_steps=merged.get("check_steps", []),
+        report_draft=merged.get("report_draft"),
+        sources=merged.get("sources", []),
+        error=error_str,
+    )
+
+    store.push(record)
+    if on_phase:
+        on_phase("done" if not error_str else "error")
+
+    _logger.info(
+        "auto diagnosis streaming stored | unit=%s session=%s risk=%s error=%s",
         summary.unit_id,
         session_id,
         record.risk_level,

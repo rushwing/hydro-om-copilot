@@ -1,12 +1,15 @@
 """
 LangGraph StateGraph definition for the Hydro O&M Copilot.
 
-Flow:
+Flow (manual):
   symptom_parser
       └── (conditional route) → retrieval
                                     └── [image_agent if image present]
                                             └── reasoning
                                                     └── report_gen → END
+
+Flow (auto):
+  sensor_reader → symptom_parser → (same conditional route as manual) → ... → END
 """
 
 from langgraph.graph import END, StateGraph
@@ -15,6 +18,7 @@ from app.agents.image_agent import image_agent_node
 from app.agents.reasoning import reasoning_node
 from app.agents.report_gen import report_gen_node
 from app.agents.retrieval import retrieval_node
+from app.agents.sensor_reader import sensor_reader_node
 from app.agents.state import AgentState
 from app.agents.symptom_parser import symptom_parser_node
 
@@ -61,8 +65,43 @@ def build_graph() -> StateGraph:
     return graph
 
 
-# Compiled graph (singleton, initialized at startup via lifespan)
+def build_auto_graph() -> StateGraph:
+    """Auto-diagnosis graph: adds sensor_reader as entry point before symptom_parser."""
+    graph = StateGraph(AgentState)
+
+    # Register nodes
+    graph.add_node("sensor_reader", sensor_reader_node)
+    graph.add_node("symptom_parser", symptom_parser_node)
+    graph.add_node("image_agent", image_agent_node)
+    graph.add_node("retrieval", retrieval_node)
+    graph.add_node("reasoning", reasoning_node)
+    graph.add_node("report_gen", report_gen_node)
+
+    # Entry point
+    graph.set_entry_point("sensor_reader")
+
+    # Edges
+    graph.add_edge("sensor_reader", "symptom_parser")
+    graph.add_conditional_edges(
+        "symptom_parser",
+        route_after_parse,
+        {"image_agent": "image_agent", "retrieval": "retrieval"},
+    )
+    graph.add_conditional_edges(
+        "image_agent",
+        route_after_image,
+        {"retrieval": "retrieval"},
+    )
+    graph.add_edge("retrieval", "reasoning")
+    graph.add_edge("reasoning", "report_gen")
+    graph.add_edge("report_gen", END)
+
+    return graph
+
+
+# Compiled graph singletons (initialized at startup via lifespan)
 _compiled_graph = None
+_compiled_auto_graph = None
 
 
 def get_compiled_graph():
@@ -70,3 +109,10 @@ def get_compiled_graph():
     if _compiled_graph is None:
         _compiled_graph = build_graph().compile()
     return _compiled_graph
+
+
+def get_compiled_auto_graph():
+    global _compiled_auto_graph
+    if _compiled_auto_graph is None:
+        _compiled_auto_graph = build_auto_graph().compile()
+    return _compiled_auto_graph

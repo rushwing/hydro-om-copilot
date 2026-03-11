@@ -22,22 +22,22 @@ class RetrievedContext(TypedDict, total=False):
 class AgentState(TypedDict):
     """Shared state across all LangGraph nodes."""
 
-    # ── Input ──────────────────────────────────────────────────────────────
+    # Input
     session_id: str
     raw_query: str
     image_base64: str | None
 
-    # ── Parsed ─────────────────────────────────────────────────────────────
+    # Parsed
     parsed_symptom: ParsedSymptom | None
     ocr_text: str | None          # extracted from image_agent
 
-    # ── Routing ────────────────────────────────────────────────────────────
+    # Routing
     topic: str | None             # vibration_swing | governor_oil_pressure | bearing_temp_cooling
 
-    # ── Retrieval ──────────────────────────────────────────────────────────
+    # Retrieval
     retrieved: RetrievedContext | None
 
-    # ── Reasoning output ───────────────────────────────────────────────────
+    # Reasoning output
     root_causes: list[dict]          # list of RootCause-shaped dicts
     check_steps: list[dict]          # list of CheckStep-shaped dicts
     risk_level: str                  # low | medium | high | critical
@@ -45,10 +45,14 @@ class AgentState(TypedDict):
     escalation_reason: str | None
     report_draft: str | None
 
-    # ── Streaming ──────────────────────────────────────────────────────────
+    # Streaming
     # Accumulates LLM token chunks for SSE streaming
     stream_tokens: Annotated[list[str], operator.add]
 
-    # ── Metadata ───────────────────────────────────────────────────────────
+    # Auto-diagnosis sensor data (only used in auto-diagnosis path)
+    sensor_reports: list[dict]       # serialized SensorReport list (input to sensor_reader)
+    sensor_data: list[dict]          # anomaly_points after sensor_reader processing
+
+    # Metadata
     sources: list[str]               # doc_ids referenced
     error: str | None

@@ -1,8 +1,22 @@
 import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
 import { DiagnosisPage } from "@/pages/DiagnosisPage";
 import { HistoryPage } from "@/pages/HistoryPage";
+import { useAutoStore } from "@/store/autoStore";
+import { useAutoDiagnosis } from "@/hooks/useAutoDiagnosis";
 
 function Nav() {
+  const { enabled, setEnabled, status } = useAutoStore();
+  const { start, stop } = useAutoDiagnosis();
+
+  const handleToggleAuto = async () => {
+    if (enabled) {
+      await stop();
+      setEnabled(false);
+    } else {
+      await start();
+    }
+  };
+
   return (
     <nav className="sticky top-0 z-50 border-b border-surface-border bg-surface-card px-6">
       <div className="mx-auto flex max-w-screen-xl items-center gap-6 py-3">
@@ -49,13 +63,32 @@ function Nav() {
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Status indicator */}
-        <div className="flex items-center gap-2 text-xs text-text-secondary">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-          </span>
-          系统就绪
+        {/* Auto-diagnosis toggle + status */}
+        <div className="flex items-center gap-3">
+          {enabled && (
+            <span className="px-2 py-0.5 text-xs rounded border border-amber/30 bg-amber/10 text-amber">
+              🤖 自动诊断 {status?.running ? "运行中" : "已暂停"}
+            </span>
+          )}
+          <button
+            onClick={handleToggleAuto}
+            className={`px-3 py-1 text-xs font-medium rounded border transition-colors ${
+              enabled
+                ? "border-surface-border text-text-secondary hover:text-text-primary hover:border-text-secondary"
+                : "border-amber/30 bg-amber/10 text-amber hover:bg-amber/20"
+            }`}
+          >
+            {enabled ? "关闭自动" : "自动诊断"}
+          </button>
+
+          {/* Status indicator */}
+          <div className="flex items-center gap-2 text-xs text-text-secondary">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+            </span>
+            系统就绪
+          </div>
         </div>
       </div>
     </nav>
