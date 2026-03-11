@@ -32,9 +32,17 @@ async def run_auto_diagnosis(
     session_id = f"auto-{uuid.uuid4()}"
     graph = get_compiled_graph()
 
+    # 单条语料场景下 symptom_text 不含机组号前缀，显式注入确保
+    # symptom_parser 能提取 parsed_symptom.unit_id，避免 report_gen 退化为"未知机组"
+    raw_query = (
+        summary.symptom_text
+        if summary.unit_id in summary.symptom_text
+        else f"【{summary.unit_id}】{summary.symptom_text}"
+    )
+
     initial_state = {
         "session_id": session_id,
-        "raw_query": summary.symptom_text,
+        "raw_query": raw_query,
         "image_base64": None,
         "parsed_symptom": None,
         "ocr_text": None,

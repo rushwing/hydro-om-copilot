@@ -26,6 +26,7 @@ async def lifespan(app: FastAPI):
 
     # Start FaultAggregator background polling task (opt-in via AUTO_RANDOM_PROBLEMS_GEN)
     polling_task: asyncio.Task | None = None
+    _diagnosis_tasks: set[asyncio.Task] = set()
     if settings.auto_random_problems_gen:
         from app.agents.auto_diagnosis import run_auto_diagnosis
         from app.store.diagnosis_store import get_store
@@ -43,7 +44,9 @@ async def lifespan(app: FastAPI):
                 summary.fault_types,
                 summary.symptom_text[:120],
             )
-            asyncio.create_task(_run_auto_diagnosis(summary))
+            task = asyncio.create_task(_run_auto_diagnosis(summary))
+            _diagnosis_tasks.add(task)
+            task.add_done_callback(_diagnosis_tasks.discard)
 
         agg = FaultAggregator(cooldown_s=settings.diagnosis_cooldown_s)
         polling_task = asyncio.create_task(
@@ -69,6 +72,11 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
         _logger.info("FaultAggregator stopped")
+
+    # Drain in-flight auto-diagnosis tasks before exit
+    if _diagnosis_tasks:
+        await asyncio.gather(*_diagnosis_tasks, return_exceptions=True)
+        _logger.info("in-flight diagnosis tasks drained | count=%d", len(_diagnosis_tasks))
 
 
 app = FastAPI(
