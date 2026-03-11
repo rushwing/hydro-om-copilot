@@ -38,9 +38,16 @@ class CurrentDiagnosisState:
     started_at: datetime = field(default_factory=lambda: datetime.now(tz=UTC))
 
 
+# Internal queue entry — bundles FaultSummary with its actual enqueue timestamp
+@dataclass
+class _QueueEntry:
+    summary: FaultSummary
+    queued_at: str = field(default_factory=lambda: datetime.now(tz=UTC).isoformat())
+
+
 class AutoDiagnosisService:
     def __init__(self) -> None:
-        self._pending: deque[FaultSummary] = deque(maxlen=settings.fault_queue_max)
+        self._pending: deque[_QueueEntry] = deque(maxlen=settings.fault_queue_max)
         self._wake: asyncio.Event = asyncio.Event()
         self._polling_task: asyncio.Task | None = None
         self._worker_task: asyncio.Task | None = None
@@ -53,13 +60,26 @@ class AutoDiagnosisService:
 
     @property
     def running(self) -> bool:
+        """True if polling loop is active."""
         return self._polling_task is not None and not self._polling_task.done()
 
+    @property
+    def _worker_alive(self) -> bool:
+        return self._worker_task is not None and not self._worker_task.done()
+
     async def start(self) -> bool:
-        """Start polling + worker. Returns True if already running (idempotent)."""
+        """Start polling + worker. Returns True if already running (idempotent).
+
+        Worker is only created when none is currently alive, so stop() → start()
+        cycles reuse the surviving worker instead of spawning a second one.
+        """
         already = self.running
         if not already:
-            self._worker_task = asyncio.create_task(self._worker(), name="auto-diagnosis-worker")
+            # Only create a new worker if the previous one has exited
+            if not self._worker_alive:
+                self._worker_task = asyncio.create_task(
+                    self._worker(), name="auto-diagnosis-worker"
+                )
             self._polling_task = asyncio.create_task(
                 self._agg.run_polling_loop(
                     _MONITORED_UNITS,
@@ -89,8 +109,9 @@ class AutoDiagnosisService:
         return was_running
 
     def enqueue(self, summary: FaultSummary) -> None:
-        """Add a FaultSummary to the LIFO queue (deque append + pop from right)."""
-        self._pending.append(summary)
+        """Add a FaultSummary to the LIFO queue, recording the actual enqueue time."""
+        entry = _QueueEntry(summary=summary)
+        self._pending.append(entry)
         self._wake.set()
         _logger.info(
             "fault enqueued | unit=%s types=%s | queue_len=%d",
@@ -106,14 +127,15 @@ class AutoDiagnosisService:
             for uid in _MONITORED_UNITS
         }
 
+        # queued_at is captured at enqueue time — stable across polls
         pending_queue = [
             {
-                "unit_id": s.unit_id,
-                "fault_types": s.fault_types,
-                "symptom_preview": s.symptom_text[:100],
-                "queued_at": datetime.now(tz=UTC).isoformat(),
+                "unit_id": entry.summary.unit_id,
+                "fault_types": entry.summary.fault_types,
+                "symptom_preview": entry.summary.symptom_text[:100],
+                "queued_at": entry.queued_at,
             }
-            for s in reversed(self._pending)  # newest first (LIFO order)
+            for entry in reversed(self._pending)  # newest first (LIFO order)
         ]
 
         current_info = None
@@ -154,7 +176,7 @@ class AutoDiagnosisService:
         }
 
     async def drain(self) -> None:
-        """Wait for the worker to finish any in-progress diagnosis (for shutdown)."""
+        """Cancel worker and wait for it to exit (for shutdown)."""
         if self._worker_task and not self._worker_task.done():
             self._worker_task.cancel()
             try:
@@ -170,8 +192,8 @@ class AutoDiagnosisService:
                 await self._wake.wait()
                 self._wake.clear()
                 while self._pending:
-                    summary = self._pending.pop()  # LIFO: pop from right (newest)
-                    await self._run_one(summary)
+                    entry = self._pending.pop()  # LIFO: pop from right (newest)
+                    await self._run_one(entry.summary)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -223,11 +245,9 @@ class AutoDiagnosisService:
                 exc,
                 exc_info=True,
             )
-            if self._current:
-                self._current.phase = "error"
         finally:
-            # Keep last current state visible for a moment; caller polls at 5s
-            pass
+            # Clear current so get_status() returns null once the diagnosis is done
+            self._current = None
 
 
 # Module-level singleton
