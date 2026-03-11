@@ -38,6 +38,10 @@
 - `backend/mcp_servers/vibration_sensor/server.py` — 振动摆度 MCP Server
 - `backend/mcp_servers/governor_sensor/server.py` — 调速器油压 MCP Server
 - `backend/mcp_servers/bearing_sensor/server.py` — 轴承温升 MCP Server
+- `backend/mcp_servers/fault_aggregator.py` — 跨传感器故障汇总 + 冷却管理
+- `backend/app/agents/auto_diagnosis.py` — FaultSummary → graph.ainvoke() runner
+- `backend/app/store/diagnosis_store.py` — 自动诊断结果环形缓冲区（fault_queue_max）
+- `backend/app/api/routes/auto_diagnosis.py` — GET /diagnosis/auto-results
 
 ---
 
@@ -99,6 +103,9 @@ VECTOR_STORE_TYPE=chroma          # chroma | qdrant
 EMBEDDING_MODEL=BAAI/bge-large-zh-v1.5
 CORS_ORIGINS=http://localhost:5173
 LANGCHAIN_TRACING_V2=false        # 生产环境默认禁用
+AUTO_RANDOM_PROBLEMS_GEN=false    # true → 启用伪传感器后台轮询 + 自动诊断
+SENSOR_POLL_INTERVAL=15           # 轮询间隔（秒）
+DIAGNOSIS_COOLDOWN=300            # 同一机组诊断冷却期（秒）
 ```
 
 ---
@@ -115,6 +122,7 @@ LANGCHAIN_TRACING_V2=false        # 生产环境默认禁用
 | 前端组件样式、UI 组件、Tailwind 颜色/字体 | `docs/06-frontend-design-system.md` |
 | 构建脚本、Docker、docker-compose、K8s | `docs/07-build-deploy.md` |
 | MCP 传感器 Server、伪随机引擎、门限常量、现象语料 | `docs/08-mcp-sensor-servers.md` |
+| FaultAggregator、自动诊断、DiagnosisStore、auto-results API | `docs/08-mcp-sensor-servers.md` |
 
 ---
 

@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_graph
 from app.models.request import DiagnosisRequest
-from app.models.response import CheckStep, DiagnosisTopic, DiagnosisResult, RiskLevel, RootCause
+from app.models.response import CheckStep, DiagnosisResult, DiagnosisTopic, RiskLevel, RootCause
 from app.utils.streaming import sse_format
 
 router = APIRouter(prefix="/diagnosis", tags=["diagnosis"])
