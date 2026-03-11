@@ -15,6 +15,7 @@
 | 向量存储 | ChromaDB（dev） / Qdrant（prod） |
 | 嵌入 | BAAI/bge-large-zh-v1.5（本地，1024维）|
 | 重排序 | BAAI/bge-reranker-v2-m3 |
+| 传感器模拟 | FastMCP 2.x + MCP 1.x（三个伪传感器 Server）|
 | 包管理 | `uv`（后端）/ `npm`（前端）|
 
 ---
@@ -31,6 +32,12 @@
 - `frontend/src/hooks/useSSEDiagnosis.ts` — SSE 生命周期管理
 - `frontend/src/store/diagnosisStore.ts` — Zustand 全局状态
 - `scripts/ingest_kb.py` — 知识库入库入口
+- `backend/mcp_servers/shared/schemas.py` — 传感器 Pydantic 模型
+- `backend/mcp_servers/shared/thresholds.py` — 三类故障门限常量
+- `backend/mcp_servers/shared/pseudo_random.py` — 伪随机引擎
+- `backend/mcp_servers/vibration_sensor/server.py` — 振动摆度 MCP Server
+- `backend/mcp_servers/governor_sensor/server.py` — 调速器油压 MCP Server
+- `backend/mcp_servers/bearing_sensor/server.py` — 轴承温升 MCP Server
 
 ---
 
@@ -107,6 +114,7 @@ LANGCHAIN_TRACING_V2=false        # 生产环境默认禁用
 | LangSmith 追踪、可观测性、eval 接入 | `docs/05-langsmith-integration.md` |
 | 前端组件样式、UI 组件、Tailwind 颜色/字体 | `docs/06-frontend-design-system.md` |
 | 构建脚本、Docker、docker-compose、K8s | `docs/07-build-deploy.md` |
+| MCP 传感器 Server、伪随机引擎、门限常量、现象语料 | `docs/08-mcp-sensor-servers.md` |
 
 ---
 
