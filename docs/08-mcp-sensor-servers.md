@@ -201,8 +201,48 @@ print(r.has_anomaly, r.epoch_elapsed_s, r.symptom_corpus)
 
 ---
 
-## 9. 下一步（P2）
+## 9. FaultAggregator（已实现）
 
-- **FaultAggregator**：轮询三个 MCP Server，汇总 `anomaly_points`，触发 LangGraph 诊断流
-- **LangGraph 集成**：将 `SensorReport.symptom_corpus` 注入 `symptom_parser` 节点输入
+`backend/mcp_servers/fault_aggregator.py`
+
+### 9.1 接口
+
+```python
+agg = FaultAggregator(cooldown_s=300)
+summary = agg.poll("#1机")      # FaultSummary | None
+await agg.run_polling_loop(unit_ids, interval_s=15, on_fault=callback)
+```
+
+`FaultSummary` 字段：`unit_id`, `fault_types`, `anomaly_points`, `symptom_text`, `sensor_reports`, `has_fault`
+
+### 9.2 FastAPI 生命周期集成
+
+在 `backend/app/main.py` lifespan 中，通过 `AUTO_RANDOM_PROBLEMS_GEN=true` 启用后台任务：
+
+```bash
+AUTO_RANDOM_PROBLEMS_GEN=true uvicorn app.main:app
+# 启动时日志：FaultAggregator started | units=['#1机', '#2机', '#3机', '#4机'] poll_interval=15s
+```
+
+- 启动：`asyncio.create_task(agg.run_polling_loop(...))` 挂入 lifespan
+- 关闭：`task.cancel()` + `await task`（捕获 `CancelledError`），干净退出
+- 默认关闭（`AUTO_RANDOM_PROBLEMS_GEN=false`）：不占资源，不影响正常诊断路由
+
+### 9.3 轮询 vs 观察者 trade-off
+
+| 维度 | 轮询（当前） | 观察者/事件推送 |
+|------|------------|----------------|
+| 实现复杂度 | 低，纯函数调用 | 高，需 broker + 重连逻辑 |
+| 传感器侧要求 | 无（只需 read API） | 必须支持 push |
+| 故障发现延迟 | 最大 = poll_interval | 接近实时（ms 级） |
+| 空闲 CPU | 固定 O(机组 × 传感器) | 零轮询，事件驱动 |
+| 可测性 | 易（mock reader 函数） | 难（需 mock broker） |
+
+**升级触发条件**：机组数 > 8 或需秒级响应时，迁移至 OPC-UA Subscription / MQTT 推送。
+
+---
+
+## 10. 下一步（P3）
+
+- **LangGraph 集成**：`on_fault` 回调触发 LangGraph 诊断流，将 `FaultSummary.symptom_text` 注入 `symptom_parser` 节点
 - **前端 SensorPanel**：展示实时 `SensorReport`，高亮 `anomaly_points`，提供"一键诊断"入口
