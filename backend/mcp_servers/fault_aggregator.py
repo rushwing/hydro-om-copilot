@@ -112,14 +112,36 @@ class FaultAggregator:
         """
         异步轮询循环（供后台任务使用）。
         on_fault 回调在检测到故障且不在冷却期时调用。
+
+        异常隔离原则：
+        - 单机组 poll() 失败 → 记录 error 并跳过该机组，不影响其他机组
+        - on_fault() 回调失败 → 记录 error 并继续轮询（回调可能接 LangGraph 等复杂逻辑）
+        - asyncio.CancelledError 不捕获 → 允许 lifespan shutdown 正常取消任务
         """
         import asyncio
+        import logging
+
+        _loop_logger = logging.getLogger("fault_aggregator.loop")
 
         while True:
             for uid in unit_ids:
-                summary = self.poll(uid)
+                try:
+                    summary = self.poll(uid)
+                except Exception:
+                    _loop_logger.error(
+                        "poll failed | unit=%s", uid, exc_info=True
+                    )
+                    continue
+
                 if summary and summary.has_fault and on_fault:
-                    on_fault(summary)
+                    try:
+                        on_fault(summary)
+                    except Exception:
+                        _loop_logger.error(
+                            "on_fault callback failed | unit=%s fault_types=%s",
+                            uid, summary.fault_types, exc_info=True,
+                        )
+
             await asyncio.sleep(interval_s)
 
     # ─── internal ─────────────────────────────────────────────────────────────

@@ -293,3 +293,94 @@ class TestPollingLoop:
             pass
 
         assert len(calls) == 0
+
+
+# ─── 异常隔离（P1 契约）────────────────────────────────────────────────────────
+
+class TestPollingLoopErrorIsolation:
+    """
+    单机组 poll() 或 on_fault() 抛异常时，
+    polling loop 不应终止，其余机组必须继续被轮询。
+    """
+
+    async def _run_briefly(self, agg: FaultAggregator, unit_ids: list[str], on_fault=None):
+        try:
+            await asyncio.wait_for(
+                agg.run_polling_loop(unit_ids, interval_s=0, on_fault=on_fault),
+                timeout=0.08,
+            )
+        except TimeoutError:
+            pass
+
+    @pytest.mark.asyncio
+    async def test_poll_exception_does_not_kill_loop(self):
+        """某机组 poll() 抛异常，其他机组仍继续被轮询。"""
+        good_reader = MagicMock(return_value=_fault_report())
+        bad_reader = MagicMock(side_effect=RuntimeError("sensor unreachable"))
+
+        calls: list[FaultSummary] = []
+        agg = FaultAggregator(cooldown_s=0, sensor_readers=[bad_reader, good_reader])
+
+        # 两台机组：#1机 reader 会抛异常（bad_reader first），但 #2机 应正常收到故障
+        # 注意：两台机组共享同一组 readers，都会触发 bad_reader
+        # 改用只对 #1机 注入异常的策略：patching poll 直接
+
+        # 直接 patch poll：#1机 抛异常，#2机 返回故障
+        original_poll = agg.poll
+
+        def selective_poll(uid):
+            if uid == "#1机":
+                raise RuntimeError("transient error")
+            return original_poll(uid)
+
+        agg.poll = selective_poll  # type: ignore[method-assign]
+
+        good_readers = [MagicMock(return_value=_fault_report())]
+        agg._readers = good_readers
+
+        await self._run_briefly(agg, ["#1机", "#2机"], on_fault=calls.append)
+
+        # #2机 应至少触发过一次 on_fault
+        assert any(s.unit_id == "#2机" for s in calls), (
+            "Loop killed by #1机 exception — #2机 never polled"
+        )
+
+    @pytest.mark.asyncio
+    async def test_on_fault_exception_does_not_kill_loop(self):
+        """on_fault 回调抛异常，polling loop 不应终止，下一轮仍继续。"""
+        call_count = 0
+
+        def flaky_callback(summary: FaultSummary) -> None:
+            nonlocal call_count
+            call_count += 1
+            raise ValueError("callback failure")
+
+        # 使用 cooldown_s=0 使得每轮都会触发 on_fault
+        agg = FaultAggregator(
+            cooldown_s=0,
+            sensor_readers=[MagicMock(return_value=_fault_report())],
+        )
+
+        await self._run_briefly(agg, ["#1机"], on_fault=flaky_callback)
+
+        # 若 loop 正常存活，callback 应被调用多次（cooldown=0 每轮都触发）
+        assert call_count > 1, (
+            f"Loop exited after first callback exception (call_count={call_count})"
+        )
+
+    @pytest.mark.asyncio
+    async def test_cancelled_error_propagates(self):
+        """CancelledError 必须透传，不被 try/except 吞掉（保证 shutdown 正常）。"""
+        agg = FaultAggregator(
+            cooldown_s=300,
+            sensor_readers=[MagicMock(return_value=_normal_report())],
+        )
+
+        task = asyncio.create_task(
+            agg.run_polling_loop(["#1机"], interval_s=10)
+        )
+        await asyncio.sleep(0)  # 让任务启动
+        task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task

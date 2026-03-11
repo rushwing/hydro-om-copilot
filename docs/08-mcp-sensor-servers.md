@@ -191,13 +191,13 @@ print(r.has_anomaly, r.epoch_elapsed_s, r.symptom_corpus)
 
 ## 8. config.py 新增配置项
 
-| 变量 | 环境变量 | 默认值 | 说明 |
-|------|----------|--------|------|
-| `auto_random_problems_gen` | `AUTO_RANDOM_PROBLEMS_GEN` | `False` | 是否启用自动故障生成（FaultAggregator，P2） |
-| `sensor_poll_interval_s` | `SENSOR_POLL_INTERVAL` | `15` | 传感器轮询间隔（秒） |
-| `fault_collection_window_s` | `FAULT_COLLECTION_WINDOW` | `60` | 故障收集窗口（秒） |
-| `diagnosis_cooldown_s` | `DIAGNOSIS_COOLDOWN` | `300` | 同一机组诊断冷却期（秒，避免重复触发） |
-| `fault_queue_max` | `FAULT_QUEUE_MAX` | `5` | 待诊断故障队列最大长度 |
+| 变量 | 环境变量 | 默认值 | 状态 | 说明 |
+|------|----------|--------|------|------|
+| `auto_random_problems_gen` | `AUTO_RANDOM_PROBLEMS_GEN` | `False` | **已生效** | 启用 FaultAggregator 后台轮询任务 |
+| `sensor_poll_interval_s` | `SENSOR_POLL_INTERVAL` | `15` | **已生效** | 传感器轮询间隔（秒） |
+| `diagnosis_cooldown_s` | `DIAGNOSIS_COOLDOWN` | `300` | **已生效** | 同一机组诊断冷却期（秒，避免重复触发） |
+| `fault_collection_window_s` | `FAULT_COLLECTION_WINDOW` | `60` | ⚠️ 保留字段，当前版本未生效 | 为 P3 LangGraph 主动上报预留：在时间窗口内累积故障后批量触发诊断 |
+| `fault_queue_max` | `FAULT_QUEUE_MAX` | `5` | ⚠️ 保留字段，当前版本未生效 | 为 P3 预留：待诊断故障队列最大长度，防止队列积压 |
 
 ---
 
