@@ -13,12 +13,26 @@
 • t=240-300s：维持在 alarm 附近（±小幅噪声）
 """
 
+import hashlib
 import math
 import random
 import time
 
 EPOCH_SECONDS = 300
 FAULT_PROB = 0.60
+
+
+def unit_tag(unit_id: str) -> str:
+    """
+    将 unit_id（如 "#2机"）转换为 tag 段（如 "U2"）。
+    提取第一段连续数字；无法解析时回退为 unit_id 原值。
+
+    >>> unit_tag("#1机")  → "U1"
+    >>> unit_tag("#12机") → "U12"
+    """
+    import re
+    m = re.search(r"\d+", unit_id)
+    return f"U{m.group()}" if m else unit_id
 
 
 def _alarm_state(value: float, spec) -> str:
@@ -60,8 +74,13 @@ class PseudoRandomEngine:
     def _elapsed(self) -> int:
         return int(time.time() % EPOCH_SECONDS)
 
+    def _stable_seed(self, key: str) -> int:
+        """SHA-256 稳定哈希 → int 种子，不受 PYTHONHASHSEED 影响。"""
+        digest = hashlib.sha256(key.encode()).digest()
+        return int.from_bytes(digest[:8], "big")
+
     def _rng(self, salt: int = 0) -> random.Random:
-        seed = hash(f"{self.sensor_id}:{self._epoch_num()}:{salt}")
+        seed = self._stable_seed(f"{self.sensor_id}:{self._epoch_num()}:{salt}")
         return random.Random(seed)
 
     # ─── epoch-level decisions (stable within epoch) ──────────────────────
@@ -97,7 +116,9 @@ class PseudoRandomEngine:
         elapsed = self._elapsed()
         # 15s 分辨率的细粒度随机种子，保证短时间内值平滑
         fine_rng = random.Random(
-            hash(f"{self.sensor_id}:{self._epoch_num()}:{elapsed // 15}:{tag}")
+            self._stable_seed(
+                f"{self.sensor_id}:{self._epoch_num()}:{elapsed // 15}:{tag}"
+            )
         )
 
         if not self.is_fault_epoch() or tag not in affected:

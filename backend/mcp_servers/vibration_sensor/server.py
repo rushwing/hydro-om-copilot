@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 from fastmcp import FastMCP
 
-from ..shared.pseudo_random import PseudoRandomEngine, _alarm_state
+from ..shared.pseudo_random import PseudoRandomEngine, _alarm_state, unit_tag
 from ..shared.schemas import SensorPoint, SensorReport
 from ..shared.symptom_corpus import VIBRATION_CORPUS
 from ..shared.thresholds import VIBRATION_THRESHOLDS, TagSpec
@@ -27,6 +27,7 @@ def _compute_point(
     engine: PseudoRandomEngine,
     spec: TagSpec,
     affected: list[str],
+    unit_id: str,
 ) -> SensorPoint:
     value, trend = engine.compute_point_value(
         spec.tag,
@@ -37,7 +38,7 @@ def _compute_point(
     )
     state = _alarm_state(value, spec.thresholds)
     return SensorPoint(
-        tag=f"HYDRO.U1.VIB.{spec.tag}",
+        tag=f"HYDRO.{unit_tag(unit_id)}.VIB.{spec.tag}",
         name_cn=spec.name_cn,
         value=round(value, 4),
         thresholds=spec.thresholds,
@@ -90,7 +91,7 @@ def read_sensor_state(unit_id: str) -> SensorReport:
     all_tags = [s.tag for s in VIBRATION_THRESHOLDS]
     affected = engine.affected_params(all_tags) if engine.is_fault_epoch() else []
 
-    readings = [_compute_point(engine, spec, affected) for spec in VIBRATION_THRESHOLDS]
+    readings = [_compute_point(engine, spec, affected, unit_id) for spec in VIBRATION_THRESHOLDS]
     anomalies = [r for r in readings if r.alarm_state != "normal"]
     corpus = _select_corpus(anomalies) if anomalies else None
 
