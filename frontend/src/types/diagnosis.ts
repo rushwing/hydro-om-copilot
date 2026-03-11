@@ -62,3 +62,61 @@ export interface DiagnosisRequest {
   query: string;
   image_base64?: string;
 }
+
+// ── Auto-diagnosis types ──────────────────────────────────────────────────────
+
+export interface SensorPointSnapshot {
+  tag: string;
+  name_cn: string;
+  value: number;
+  alarm_state: "normal" | "warn" | "alarm" | "trip";
+  trend: "stable" | "rising" | "falling";
+  thresholds: { unit: string; [key: string]: unknown };
+}
+
+export interface PendingFaultItem {
+  unit_id: string;
+  fault_types: string[];
+  symptom_preview: string;
+  queued_at: string;
+}
+
+export interface CurrentDiagnosisInfo {
+  session_id: string;
+  unit_id: string;
+  fault_types: string[];
+  phase: string;
+  stream_preview: string;
+  sensor_data: SensorPointSnapshot[];
+  started_at: string;
+}
+
+export type EpochPhase = "NORMAL" | "PRE_FAULT" | "FAULT" | "COOL_DOWN";
+
+export interface AutoDiagnosisStatus {
+  running: boolean;
+  is_simulated: boolean;
+  current: CurrentDiagnosisInfo | null;
+  pending_queue: PendingFaultItem[];
+  completed_count: number;
+  unit_cooldowns: Record<string, number>;
+  epoch_num: number;
+  epoch_elapsed_s: number;
+  epoch_phase: EpochPhase;
+}
+
+export interface AutoDiagnosisRecord {
+  session_id: string;
+  unit_id: string;
+  fault_types: string[];
+  symptom_text: string;
+  triggered_at: string;
+  risk_level: RiskLevel | null;
+  escalation_required: boolean;
+  escalation_reason: string | null;
+  root_causes: RootCause[];
+  check_steps: CheckStep[];
+  report_draft: string | null;
+  sources: string[];
+  error: string | null;
+}

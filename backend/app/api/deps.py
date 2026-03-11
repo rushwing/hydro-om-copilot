@@ -14,3 +14,8 @@ def get_graph():
 
 def get_store() -> DiagnosisStore:
     return _get_store()
+
+
+def get_auto_diagnosis_service():
+    from app.services.auto_diagnosis_service import get_auto_service
+    return get_auto_service()
