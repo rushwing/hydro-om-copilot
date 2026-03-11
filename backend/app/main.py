@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import diagnosis, health
+from app.api.routes import auto_diagnosis, diagnosis, health
 from app.config import settings
 
 _logger = logging.getLogger("app.main")
@@ -27,7 +27,14 @@ async def lifespan(app: FastAPI):
     # Start FaultAggregator background polling task (opt-in via AUTO_RANDOM_PROBLEMS_GEN)
     polling_task: asyncio.Task | None = None
     if settings.auto_random_problems_gen:
+        from app.agents.auto_diagnosis import run_auto_diagnosis
+        from app.store.diagnosis_store import get_store
         from mcp_servers.fault_aggregator import FaultAggregator, FaultSummary
+
+        _store = get_store()
+
+        async def _run_auto_diagnosis(summary: FaultSummary) -> None:
+            await run_auto_diagnosis(summary, _store)
 
         def _on_fault(summary: FaultSummary) -> None:
             _logger.warning(
@@ -36,6 +43,7 @@ async def lifespan(app: FastAPI):
                 summary.fault_types,
                 summary.symptom_text[:120],
             )
+            asyncio.create_task(_run_auto_diagnosis(summary))
 
         agg = FaultAggregator(cooldown_s=settings.diagnosis_cooldown_s)
         polling_task = asyncio.create_task(
@@ -80,6 +88,7 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(diagnosis.router)
+app.include_router(auto_diagnosis.router)
 
 
 if __name__ == "__main__":
