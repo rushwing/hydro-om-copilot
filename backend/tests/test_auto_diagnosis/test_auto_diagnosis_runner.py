@@ -66,10 +66,36 @@ class TestRunAutoDiagnosis:
         assert record is store.list_all()[0]
 
     @pytest.mark.asyncio
-    async def test_raw_query_is_symptom_text(self):
+    async def test_raw_query_prefixed_when_unit_id_absent(self):
+        """P1 fix: unit_id 不在 symptom_text 中时自动注入前缀【unit_id】。"""
         store = DiagnosisStore(max_size=5)
-        summary = _make_summary()
+        summary = _make_summary()  # symptom_text 不含 "#1机"
+        assert summary.unit_id not in summary.symptom_text
 
+        captured_state: dict = {}
+
+        async def mock_ainvoke(state, **kwargs):
+            captured_state.update(state)
+            return _make_final_state(state["session_id"])
+
+        with patch("app.agents.auto_diagnosis.get_compiled_graph") as mock_graph_fn:
+            mock_graph_fn.return_value.ainvoke = mock_ainvoke
+            await run_auto_diagnosis(summary, store)
+
+        assert captured_state["raw_query"].startswith(f"【{summary.unit_id}】")
+        assert summary.symptom_text in captured_state["raw_query"]
+
+    @pytest.mark.asyncio
+    async def test_raw_query_unchanged_when_unit_id_present(self):
+        """P1 fix: unit_id 已在 symptom_text 中时不重复添加前缀。"""
+        store = DiagnosisStore(max_size=5)
+        summary = FaultSummary(
+            unit_id="#2机",
+            fault_types=["vibration_swing"],
+            anomaly_points=[],
+            symptom_text="【#2机】水导摆度升高至 0.52 mm，1倍转频成分显著",
+            sensor_reports=[],
+        )
         captured_state: dict = {}
 
         async def mock_ainvoke(state, **kwargs):
