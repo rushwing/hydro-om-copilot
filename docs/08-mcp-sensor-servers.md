@@ -242,7 +242,45 @@ AUTO_RANDOM_PROBLEMS_GEN=true uvicorn app.main:app
 
 ---
 
-## 10. 下一步（P3）
+## 10. LangGraph 自动诊断集成（已实现）
 
-- **LangGraph 集成**：`on_fault` 回调触发 LangGraph 诊断流，将 `FaultSummary.symptom_text` 注入 `symptom_parser` 节点
-- **前端 SensorPanel**：展示实时 `SensorReport`，高亮 `anomaly_points`，提供"一键诊断"入口
+### 10.1 新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `backend/app/store/diagnosis_store.py` | `AutoDiagnosisRecord`（Pydantic）+ `DiagnosisStore` 环形缓冲区（`deque`，容量 = `fault_queue_max`）+ `get_store()` 单例 |
+| `backend/app/agents/auto_diagnosis.py` | `run_auto_diagnosis(summary, store)` — 将 `FaultSummary` 转为 `AgentState`，调用 `graph.ainvoke()`，结果写入 store |
+| `backend/app/api/routes/auto_diagnosis.py` | `GET /diagnosis/auto-results` — 查询最近 N 条自动诊断记录（最新在前）|
+
+### 10.2 完整链路
+
+```
+传感器轮询（15s）→ FaultAggregator.poll()
+  → on_fault 触发 → asyncio.create_task
+    → run_auto_diagnosis(FaultSummary, store)
+      → graph.ainvoke(raw_query = symptom_text)
+        → symptom_parser → retrieval → reasoning → report_gen
+          → AutoDiagnosisRecord 存入 DiagnosisStore
+            ← GET /diagnosis/auto-results
+```
+
+### 10.3 设计要点
+
+- `topic` **不预填**：`symptom_parser._infer_topic()` 是唯一路由入口，`symptom_text` 中的中文关键词已能正确映射到 topic 键
+- `session_id = "auto-<uuid4>"`：LangSmith 追踪中可区分手动 vs 自动诊断
+- `graph.ainvoke()` 异常写入 `record.error`，不阻断轮询循环（已有 per-unit 异常隔离）
+- `fault_queue_max` 配置项在此阶段正式生效（控制 `DiagnosisStore` 容量）
+
+### 10.4 启用方式
+
+```bash
+AUTO_RANDOM_PROBLEMS_GEN=true uvicorn app.main:app
+# 等待约一个 fault epoch（~5 分钟）后查询结果：
+curl http://localhost:8000/diagnosis/auto-results
+```
+
+---
+
+## 11. 下一步（P4）
+
+- **前端 SensorPanel**：展示实时 `SensorReport`，高亮 `anomaly_points`，提供"一键诊断"入口；轮询 `GET /diagnosis/auto-results` 展示历史记录
