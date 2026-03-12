@@ -215,7 +215,7 @@ Do NOT merge the PR — HITL merge only.
 | 场景 | 策略 | 操作 |
 |---|---|---|
 | 实现 REQ 途中发现 bug（同属一个特性） | **Bundle** — 合并进同一 PR | 直接在 `feat/REQ-xxx` 分支修复，不开独立 PR |
-| Bug 依赖某 REQ，但可等 HITL review 结束 | **Serialize** — 人工跟踪依赖 | 在 BUG-xxx.md `Agent Notes` 中注明"等待 REQ-xxx 合并后再认领"，保持 `status: confirmed, owner: unassigned` |
+| Bug 依赖某 REQ，但可等 HITL review 结束 | **Serialize** — `depends_on` 字段 | BUG-xxx.md frontmatter 写 `depends_on: [REQ-xxx]`，保持 `status: confirmed, owner: unassigned`；harness.sh 会自动跳过有依赖的 Bug |
 | Bug 必须先于依赖 PR merge（紧急/reviewer 发现） | **Stacked PR** — PR base 指向依赖分支 | 见下方命令 |
 
 ### Stacked PR 操作流程

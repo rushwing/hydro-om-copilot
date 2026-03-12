@@ -150,6 +150,13 @@ cmd_implement() {
   [[ "$owner" == "unassigned" ]] \
     || die "${req} 已被 ${owner} 认领，无法重复认领"
 
+  # depends_on 前置检查
+  local depends_on=""
+  depends_on=$(grep '^depends_on:' "$req_file" | sed 's/^depends_on: *//' | tr -d '[]" ') || true
+  if [[ -n "$depends_on" ]]; then
+    die "${req} 有未解除的依赖：depends_on=${depends_on}\n请等依赖合并后再认领。"
+  fi
+
   info "触发 Claude Code 认领并实现 ${req} ..."
   local tmp_out session_log="${REPO_ROOT}/.harness_sessions"
   tmp_out=$(mktemp)
@@ -193,6 +200,13 @@ cmd_tc_design() {
     || warn "${req} status=${status}，期望 ready。确认后继续..."
   [[ "$owner" == "unassigned" ]] \
     || die "${req} 已被 ${owner} 认领"
+
+  # test_case_ref 已有内容则跳过（TC 已设计）
+  local existing_tc=""
+  existing_tc=$(grep '^test_case_ref:' "$req_file" | sed 's/^test_case_ref: *//' | tr -d '[]" ') || true
+  if [[ -n "$existing_tc" ]]; then
+    die "${req} 已有 TC（test_case_ref=${existing_tc}），无需重复设计。若需重新设计，请先清空该字段。"
+  fi
 
   info "触发 Codex TC 设计 ${req} ..."
   local tmp_out session_log="${REPO_ROOT}/.harness_sessions"
@@ -397,9 +411,13 @@ cmd_status() {
       id=$(grep '^bug_id:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       title=$(grep '^title:' "$f" 2>/dev/null | sed 's/^title: *//')
       sev=$(grep '^severity:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
-      if [[ "$s" == "confirmed" && "$o" == "unassigned" ]]; then
+      local dep=""
+      dep=$(grep '^depends_on:' "$f" 2>/dev/null | sed 's/^depends_on: *//' | tr -d '[]" ') || true
+      if [[ "$s" == "confirmed" && "$o" == "unassigned" && -z "$dep" ]]; then
         echo -e "  ${GREEN}●${NC} ${id} [${sev}]  ${title}"
         found=1
+      elif [[ "$s" == "confirmed" && "$o" == "unassigned" && -n "$dep" ]]; then
+        echo -e "  ${YELLOW}○${NC} ${id} [${sev}]  ${title}  (blocked: depends_on=${dep})"
       fi
     done
     [[ $found -eq 1 ]] || echo "  (无)"
