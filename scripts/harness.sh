@@ -26,8 +26,8 @@ trap 'echo "\n[harness] 错误：脚本在第 $LINENO 行退出" >&2' ERR
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CLAUDE_APPROVAL="${CLAUDE_APPROVAL:-}"        # 留空则交互式
 # zsh 数组：避免变量含空格时被当成单一命令名执行
-# review 需要调 gh（网络），必须用 danger-full-access 绕过 sandbox 网络限制
-CODEX_REVIEW=(codex exec -a never -s danger-full-access)
+# review 需要调 gh（网络），--dangerously-bypass-approvals-and-sandbox 跳过 sandbox + 审批
+CODEX_REVIEW=(codex exec --dangerously-bypass-approvals-and-sandbox)
 # 其他任务（tc-design 等）只需写文件，workspace-write 足够
 CODEX_EXEC=(codex exec --full-auto)
 

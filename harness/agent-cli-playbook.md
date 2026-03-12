@@ -86,11 +86,11 @@ Report any failures. Fix lint/format issues automatically. Do not fix type error
 # 交互式
 codex
 
-# 非交互式，全自动（workspace-write sandbox，on-request approval）
+# 非交互式，全自动（workspace-write sandbox）
 codex exec --full-auto "prompt"
 
 # 需要网络访问时（如 gh pr review 需要连 GitHub API）
-codex exec -a never -s danger-full-access "prompt"
+codex exec --dangerously-bypass-approvals-and-sandbox "prompt"
 ```
 
 > **推荐直接使用 `scripts/harness.sh`**，它会自动选择正确的 sandbox 模式和预注入上下文。
@@ -122,7 +122,7 @@ IMPORTANT — claim mutex first, then do the work:
 
 ```bash
 # PR diff 和 REQ 内容由 harness.sh 预注入，无需 agent 自行探索
-codex exec -a never -s danger-full-access "
+codex exec --dangerously-bypass-approvals-and-sandbox "
 Read agents/openai-codex/SOUL.md, then harness/review-standard.md.
 
 ## Pre-fetched context for PR #<N>
@@ -220,10 +220,9 @@ gh pr create \
 
 | 场景 | 建议模式 |
 |---|---|
-| 无人值守 CI / GitHub Action | `--approval-mode full-auto` |
-| 人工监督，允许自动写文件 | `--approval-mode auto-edit` |
-| 仅建议，人工确认每步 | `--approval-mode suggest`（codex 默认）|
-| Claude Code 非交互 | `-p "..."` |
+| TC 设计 / bugfix（只写文件）| `codex exec --full-auto` |
+| Review / 需要 gh 网络访问 | `codex exec --dangerously-bypass-approvals-and-sandbox` |
+| Claude Code 非交互 | `claude -p "..."` |
 
 > **永远不要在 Claim PR 以外的场景使用 `gh pr merge --auto`。**
 > Implementation PR 必须人工 approve 后才能合并（见 ci-standard.md §HITL）。
@@ -235,3 +234,4 @@ gh pr create \
 | 版本 | 日期 | 变更摘要 |
 |---|---|---|
 | 0.1 | 2026-03-12 | 初始版本；收录 A–H 八个常用模板，覆盖 TC 设计、实现认领、Bug 修复、PR Review、一致性审查 |
+| 0.2 | 2026-03-13 | 修正 codex CLI 标志：`-a never -s danger-full-access` → `--dangerously-bypass-approvals-and-sandbox`；更新注意事项表格 |
