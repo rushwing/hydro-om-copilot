@@ -102,11 +102,15 @@ check_depends() {
   return 0
 }
 
-# check_related_req_conflict <bug_file>
+# check_related_req_conflict <bug_file> [bypass_req]
 # 若 related_req 中任一 REQ 处于 in_progress，返回 1 并输出冲突列表。
+# bypass_req（可选）：精确匹配某一 REQ id，该项视为已处理（用于 --stacked/--bundle 精准绕过）。
+#   仅跳过完全相等的 id；REQ-01 不会匹配 REQ-010。
+#   其余仍处于 in_progress 的 REQ 仍会触发冲突。
 # 避免 bug fix 与正在实现的 REQ 并发修改同一代码区域（见 bug-standard.md §6.1）。
 check_related_req_conflict() {
   local file="$1"
+  local bypass_req="${2:-}"
   local related_raw=""
   related_raw=$(grep '^related_req:' "$file" 2>/dev/null | sed 's/^related_req: *//' | tr -d '[]"') || true
   [[ -z "${related_raw// /}" ]] && return 0
@@ -115,6 +119,8 @@ check_related_req_conflict() {
   while IFS= read -r req_id; do
     req_id="${req_id//[[:space:]]/}"
     [[ -z "$req_id" ]] && continue
+    # Exact-match bypass: skip only the specific REQ covered by --stacked/--bundle
+    [[ -n "$bypass_req" && "$req_id" == "$bypass_req" ]] && continue
     local req_file="${REPO_ROOT}/tasks/features/${req_id}.md"
     if [[ -f "$req_file" ]]; then
       local req_status=""
@@ -406,28 +412,21 @@ cmd_bugfix() {
   [[ "$owner" == "unassigned" ]] \
     || die "${bug} 已被 ${owner} 认领"
 
+  # Extract REQ id from supplied branch (exact match used inside check_related_req_conflict)
+  local branch_req=""
+  [[ -n "$bundle_branch" ]] && branch_req=$(echo "$bundle_branch" | grep -oE '(REQ|BUG)-[0-9]+' | head -1) || true
+  [[ -n "$stacked_base"  ]] && branch_req=$(echo "$stacked_base"  | grep -oE '(REQ|BUG)-[0-9]+' | head -1) || true
+
   local conflicts=""
-  if ! conflicts=$(check_related_req_conflict "$bug_file"); then
-    # Extract the REQ id from the supplied branch to verify it covers a real conflict
-    local branch_req=""
-    [[ -n "$bundle_branch"  ]] && branch_req=$(echo "$bundle_branch"  | grep -oE '(REQ|BUG)-[0-9]+' | head -1) || true
-    [[ -n "$stacked_base"   ]] && branch_req=$(echo "$stacked_base"   | grep -oE '(REQ|BUG)-[0-9]+' | head -1) || true
-
-    local branch_covers_conflict=0
-    if [[ -n "$branch_req" ]] && echo "$conflicts" | grep -qF "$branch_req"; then
-      branch_covers_conflict=1
-    fi
-
-    if [[ $branch_covers_conflict -eq 1 && -n "$bundle_branch" ]]; then
-      info "Bundle 模式：${branch_req} 冲突由 ${bundle_branch} 处理，将直接在该分支上修复"
-    elif [[ $branch_covers_conflict -eq 1 && -n "$stacked_base" ]]; then
-      info "Stacked PR 模式：${branch_req} 冲突由 base 分支 ${stacked_base} 处理"
-    else
-      local extra=""
-      [[ -n "$bundle_branch$stacked_base" && $branch_covers_conflict -eq 0 ]] \
-        && extra="\n提供的分支（${bundle_branch}${stacked_base}）未覆盖冲突 REQ：${conflicts}"
-      die "${bug} 的关联需求正在实现中：${conflicts}${extra}\n请选择：\n  1. Bundle（同一特性内的 Bug）：harness bugfix --bundle <REQ分支> ${bug}\n     → 直接提交到 feat/REQ-xxx 分支，合并进同一 PR\n  2. Stacked PR（紧急/必须先于依赖合并）：harness bugfix --stacked <REQ分支> ${bug}\n     → 独立 fix 分支，PR base 指向 REQ 分支\n  3. 等 REQ 完成后再认领（推荐用于低优先级 Bug）\n（见 agent-cli-playbook.md §PR 依赖链处理）"
-    fi
+  if ! conflicts=$(check_related_req_conflict "$bug_file" "$branch_req"); then
+    # Remaining conflicts after exact-id bypass — branch doesn't cover all in-progress REQs
+    local extra=""
+    [[ -n "$branch_req" ]] && extra="\n注意：${branch_req} 已绕过，但仍有其他正在实现的关联需求：${conflicts}"
+    die "${bug} 的关联需求正在实现中：${conflicts}${extra}\n请选择：\n  1. Bundle（同一特性内的 Bug）：harness bugfix --bundle <REQ分支> ${bug}\n     → 直接提交到 feat/REQ-xxx 分支，合并进同一 PR\n  2. Stacked PR（紧急/必须先于依赖合并）：harness bugfix --stacked <REQ分支> ${bug}\n     → 独立 fix 分支，PR base 指向 REQ 分支\n  3. 等 REQ 完成后再认领（推荐用于低优先级 Bug）\n（见 agent-cli-playbook.md §PR 依赖链处理）"
+  elif [[ -n "$bundle_branch" && -n "$branch_req" ]]; then
+    info "Bundle 模式：${branch_req} 冲突由 ${bundle_branch} 处理，将直接在该分支上修复"
+  elif [[ -n "$stacked_base" && -n "$branch_req" ]]; then
+    info "Stacked PR 模式：${branch_req} 冲突由 base 分支 ${stacked_base} 处理"
   fi
 
   # depends_on gate：仅精准绕过 --stacked/--bundle 提供的那一个依赖，其余依赖仍须满足

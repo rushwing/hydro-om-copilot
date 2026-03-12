@@ -288,8 +288,8 @@ draft → ready → test_designed → in_progress → review → done
 | 步骤 | 操作 |
 |---|---|
 | 1 | 创建 Claim 分支：TC 设计用 `claim/REQ-xxx-tc`；实现用 `claim/REQ-xxx` |
-| 2 | 单文件 commit：仅改 `tasks/features/REQ-xxx.md`；TC 设计 claim 只改 `owner → openai_codex`，实现 claim 改 `owner → claude_code` 且 `status → in_progress`；message：`claim: REQ-xxx` |
-| 3 | Push，立即开 **Claim PR**，标题：`claim: REQ-xxx`，启用 **auto-merge**（无需 human review）|
+| 2 | 单文件 commit：仅改 `tasks/features/REQ-xxx.md`；TC 设计 claim 只改 `owner → openai_codex`，实现 claim 改 `owner → claude_code` 且 `status → in_progress`；message：TC 设计用 `claim: REQ-xxx-tc`，实现用 `claim: REQ-xxx` |
+| 3 | Push，立即开 **Claim PR**：TC 设计标题 `claim: REQ-xxx-tc`，实现标题 `claim: REQ-xxx`；启用 **auto-merge**（无需 human review）|
 | 4 | 检查 Claim PR 结果：merged → 任务归你；conflict/failed → 任务已被认领，删除分支，选其他任务 |
 | 5 | 认领成功后，按任务类型继续：TC 设计走 `test/REQ-xxx-tc-design`；实现走 `feat/REQ-xxx-<desc>` |
 
