@@ -3,6 +3,7 @@
 #
 # 用法:
 #   ./scripts/harness.sh review <PR号>          # Codex review 指定 PR
+#   ./scripts/harness.sh fix-review <PR号>      # Claude Code 修复 PR 的 review comments
 #   ./scripts/harness.sh implement <REQ-xxx>    # Claude Code 认领并实现需求
 #   ./scripts/harness.sh tc-design <REQ-xxx>    # Codex 设计验收测试用例
 #   ./scripts/harness.sh bugfix <BUG-xxx>       # Claude Code 认领并修复 Bug
@@ -266,6 +267,79 @@ Your task: fix ${bug}.
   rm -f "$tmp_out"
 }
 
+cmd_fix_review() {
+  local pr="${1:-}"
+  [[ -n "$pr" ]] || die "Usage: harness fix-review <PR号>\n  例：harness fix-review 18"
+  require claude "Install: https://claude.ai/code"
+  require gh    "Install: https://cli.github.com"
+
+  info "预取 PR #${pr} review comments..."
+
+  # 拉取 PR 元数据
+  local pr_title pr_head pr_base
+  pr_title=$(gh pr view "$pr" --json title  -q '.title')
+  pr_head=$(gh pr view  "$pr" --json headRefName -q '.headRefName')
+  pr_base=$(gh pr view  "$pr" --json baseRefName -q '.baseRefName')
+
+  # 拉取 review 顶层 comments（gh pr review list）
+  local review_comments=""
+  review_comments=$(gh api "repos/{owner}/{repo}/pulls/${pr}/reviews" \
+    --jq '[.[] | select(.state=="COMMENTED" or .state=="CHANGES_REQUESTED") | {author: .user.login, state: .state, body: .body}]' \
+    2>/dev/null) || review_comments="[]"
+
+  # 拉取 inline review comments（逐行批注）
+  local inline_comments=""
+  inline_comments=$(gh api "repos/{owner}/{repo}/pulls/${pr}/comments" \
+    --jq '[.[] | {author: .user.login, path: .path, line: .original_line, body: .body, resolved: (.pull_request_review_id | tostring)}]' \
+    2>/dev/null) || inline_comments="[]"
+
+  # 如果两类 comment 都为空或空数组，提前退出
+  if [[ "$review_comments" == "[]" && "$inline_comments" == "[]" ]]; then
+    ok "PR #${pr} 没有未处理的 review comments，无需修复。"
+    return 0
+  fi
+
+  info "触发 Claude Code 修复 PR #${pr} review findings..."
+  local tmp_out session_log="${REPO_ROOT}/.harness_sessions"
+  tmp_out=$(mktemp)
+
+  local claude_cmd=(claude -p)
+  if [[ -n "$CLAUDE_APPROVAL" ]]; then claude_cmd=(claude "$CLAUDE_APPROVAL" -p); fi
+
+  "${claude_cmd[@]}" "
+Read agents/claude-code/SOUL.md and harness/review-standard.md.
+
+## Pre-fetched context for PR #${pr} — use directly, do NOT re-fetch
+
+- Title: ${pr_title}
+- Branch: ${pr_head} → ${pr_base}
+
+### Review comments (top-level)
+${review_comments}
+
+### Inline review comments
+${inline_comments}
+
+## Your task
+Address every finding above:
+1. Read the referenced file+line for each inline comment
+2. Fix the issue in the code or doc (do NOT skip any comment)
+3. If a finding is invalid, leave a note in your response explaining why — do not silently ignore it
+4. After ALL fixes are committed and pushed to branch ${pr_head}, resolve each addressed comment thread:
+   gh api repos/{owner}/{repo}/pulls/comments/<comment_id>/replies -f body='Fixed in <commit-sha>: <one-line summary>'
+   (Note: GitHub does not expose a public API to mark threads resolved; replying is the standard signal)
+5. Do NOT merge the PR — HITL merge only
+" 2>&1 | tee "$tmp_out"
+
+  local session_id=""
+  session_id=$(grep -E 'session[- ]id[: ]+' "$tmp_out" | grep -oE '[0-9a-f-]{36}' | head -1) || true
+  if [[ -n "$session_id" ]]; then
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  fix-review pr=${pr}  ${session_id}" >> "$session_log"
+    ok "Session → .harness_sessions  (resume only if interrupted: codex resume ${session_id})"
+  fi
+  rm -f "$tmp_out"
+}
+
 cmd_status() {
   info "扫描可认领任务...\n"
 
@@ -345,6 +419,7 @@ usage() {
 
 Commands:
   review <PR号>        触发 Codex review 指定 PR
+  fix-review <PR号>    触发 Claude Code 修复 PR 的 review comments
   implement <REQ-xxx>  触发 Claude Code 认领并实现需求
   tc-design <REQ-xxx>  触发 Codex 设计验收测试用例
   bugfix <BUG-xxx>     触发 Claude Code 认领并修复 Bug
@@ -355,6 +430,7 @@ Commands:
 
 示例:
   ./scripts/harness.sh review 18
+  ./scripts/harness.sh fix-review 18
   ./scripts/harness.sh implement REQ-001
   ./scripts/harness.sh tc-design REQ-002
   ./scripts/harness.sh bugfix BUG-001
@@ -365,11 +441,12 @@ EOF
 cd "$REPO_ROOT"
 
 case "${1:-}" in
-  review)     cmd_review    "${2:-}" ;;
-  implement)  cmd_implement "${2:-}" ;;
-  tc-design)  cmd_tc_design "${2:-}" ;;
-  bugfix)     cmd_bugfix    "${2:-}" ;;
-  status)     cmd_status ;;
+  review)      cmd_review      "${2:-}" ;;
+  fix-review)  cmd_fix_review  "${2:-}" ;;
+  implement)   cmd_implement   "${2:-}" ;;
+  tc-design)   cmd_tc_design   "${2:-}" ;;
+  bugfix)      cmd_bugfix      "${2:-}" ;;
+  status)      cmd_status ;;
   -h|--help|help|"") usage ;;
   *) die "未知命令: $1\n$(usage)" ;;
 esac

@@ -165,6 +165,29 @@ Do not modify frozen files (list in CLAUDE.md §架构约束).
 "
 ```
 
+### 模板 I · Fix Review Comments（修复 PR review findings）
+
+> 使用 `scripts/harness.sh fix-review <PR号>` 代替手动调用，脚本会预注入所有 review comments。
+
+```bash
+# review comments 由 harness.sh 预注入，无需 agent 自行探索
+claude -p "
+Read agents/claude-code/SOUL.md and harness/review-standard.md.
+
+## Pre-fetched context for PR #<N>
+[由 harness.sh 自动填充 — review 顶层 comments + inline comments]
+
+## Your task
+Address every finding:
+1. Read the referenced file+line for each inline comment
+2. Fix the code or doc (do NOT skip any comment)
+3. If a finding is invalid, note why — do not silently ignore
+4. After all fixes are pushed, reply to each comment thread:
+   gh api repos/{owner}/{repo}/pulls/comments/<id>/replies -f body='Fixed in <sha>: <summary>'
+Do NOT merge the PR — HITL merge only.
+"
+```
+
 ---
 
 ## 人工触发 Agent Loop（tasks/ 有新任务时）
@@ -178,6 +201,9 @@ Do not modify frozen files (list in CLAUDE.md §架构约束).
 
 # 手动触发实现（claude_code）
 ./scripts/harness.sh implement REQ-<N>
+
+# 修复 PR review comments（claude_code）
+./scripts/harness.sh fix-review <PR号>
 ```
 
 ---
@@ -237,3 +263,4 @@ gh pr create \
 |---|---|---|
 | 0.1 | 2026-03-12 | 初始版本；收录 A–H 八个常用模板，覆盖 TC 设计、实现认领、Bug 修复、PR Review、一致性审查 |
 | 0.2 | 2026-03-13 | 修正 codex CLI 标志：`-a never -s danger-full-access` → `--dangerously-bypass-approvals-and-sandbox`；更新注意事项表格 |
+| 0.3 | 2026-03-13 | 新增模板 I（Fix Review Comments）；fix-review 命令加入 harness.sh 和 Agent Loop 示例 |
