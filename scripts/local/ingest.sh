@@ -36,7 +36,13 @@ fi
 # Load .env so KB_DOCS_DIR etc. are available
 set -a; source "$PROJECT_ROOT/.env"; set +a
 
-KB_DIR="${KB_DOCS_DIR:-$PROJECT_ROOT/knowledge_base/docs_internal}"
+# Resolve KB_DIR to absolute path (KB_DOCS_DIR in .env may be relative)
+_raw_kb="${KB_DOCS_DIR:-./knowledge_base/docs_internal}"
+if [[ "$_raw_kb" = /* ]]; then
+    KB_DIR="$_raw_kb"
+else
+    KB_DIR="$PROJECT_ROOT/${_raw_kb#./}"
+fi
 log_info "Knowledge base directory: $KB_DIR"
 
 if [[ ! -d "$KB_DIR" ]]; then

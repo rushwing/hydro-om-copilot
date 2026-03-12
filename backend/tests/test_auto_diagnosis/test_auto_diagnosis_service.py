@@ -18,7 +18,6 @@ import pytest
 
 from mcp_servers.fault_aggregator import FaultSummary
 
-
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _make_summary(unit_id: str = "#1机") -> FaultSummary:
