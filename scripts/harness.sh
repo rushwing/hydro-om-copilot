@@ -161,6 +161,23 @@ cmd_review() {
 $(cat "$task_file")
 "
       info "已内联 ${task_id} → $(basename "$task_file")"
+
+      # 内联 TC 文件（供 reviewer 验证 TC 覆盖率）
+      local tc_refs=""
+      tc_refs=$(grep '^test_case_ref:' "$task_file" | sed 's/^test_case_ref: *//' | tr -d '[]"') || true
+      while IFS= read -r tc_id; do
+        tc_id="${tc_id//[[:space:]]/}"
+        [[ -z "$tc_id" ]] && continue
+        local tc_file=""
+        tc_file=$(echo "${REPO_ROOT}/tasks/test-cases/${tc_id}"*.md(N) | awk '{print $1}')
+        if [[ -f "${tc_file:-}" ]]; then
+          task_section="${task_section}
+### TC: ${tc_id}
+$(cat "$tc_file")
+"
+          info "已内联 TC ${tc_id}"
+        fi
+      done < <(echo "$tc_refs" | tr ',\n' '\n')
     else
       warn "${task_id} 在 PR 描述中提及，但 tasks/ 中未找到对应文件"
     fi
@@ -198,7 +215,7 @@ ${pr_diff}
 
 ## Your task
 Check per review-standard.md: 前置依赖检查, 契约一致性, 安全性, 测试质量, 代码可读性.
-${task_section:+Verify implementation against the Acceptance Criteria in the task file above.}
+${task_section:+Verify implementation against the Acceptance Criteria and TC coverage using the task/TC files above — do NOT re-fetch them.}
 Post findings to GitHub (network is available):
   gh pr review ${pr} --comment -b '...'         # non-blocking
   gh pr review ${pr} --request-changes -b '...' # blocking
@@ -406,20 +423,24 @@ Read agents/claude-code/SOUL.md and harness/review-standard.md.
 - Title: ${pr_title}
 - Branch: ${pr_head} → ${pr_base}
 
-### Review comments (top-level)
+### Review summary bodies (top-level — read for context, no reply endpoint)
 ${review_comments}
 
-### Inline review comments (each entry includes \"id\" for replying)
+### Inline review comments (each has an \"id\" — use reply endpoint below)
 ${inline_comments}
 
 ## Your task
-Address every finding above:
+Address every finding in both sections above:
 1. Read the referenced file+line for each inline comment
-2. Fix the issue in the code or doc (do NOT skip any comment)
-3. If a finding is invalid, leave a note in your response explaining why — do not silently ignore it
-4. After ALL fixes are committed and pushed to branch ${pr_head}, reply to each addressed thread using its id:
-   gh api repos/{owner}/{repo}/pulls/${pr}/comments/<id>/replies -X POST -f body='Fixed in <commit-sha>: <one-line summary>'
-   (GitHub has no public API to mark threads resolved; a reply is the standard signal)
+2. Fix the issue in the code or doc (do NOT skip any finding)
+3. If a finding is invalid, leave a note in your response explaining why
+
+4. After ALL fixes are committed and pushed to branch ${pr_head}:
+   a) For each INLINE comment (has id): post a reply
+      gh api repos/{owner}/{repo}/pulls/${pr}/comments/<id>/replies -X POST -f body='Fixed in <sha>: <summary>'
+   b) For top-level REVIEW summaries (no reply endpoint): post one general comment acknowledging all addressed
+      gh pr review ${pr} --comment -b 'Addressed review findings: ...'
+
 5. Do NOT merge the PR — HITL merge only
 "
 }

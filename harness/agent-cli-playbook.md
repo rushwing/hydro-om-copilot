@@ -187,12 +187,15 @@ Read agents/claude-code/SOUL.md and harness/review-standard.md.
 [由 harness.sh 自动填充 — review 顶层 comments + inline comments]
 
 ## Your task
-Address every finding:
+Address every finding in both sections:
 1. Read the referenced file+line for each inline comment
-2. Fix the code or doc (do NOT skip any comment)
+2. Fix the code or doc (do NOT skip any finding)
 3. If a finding is invalid, note why — do not silently ignore
-4. After all fixes are pushed, reply to each addressed thread using its id:
-   gh api repos/{owner}/{repo}/pulls/<PR>/comments/<id>/replies -X POST -f body='Fixed in <sha>: <summary>'
+4. After all fixes are pushed:
+   a) Inline comments (have id) → reply via:
+      gh api repos/{owner}/{repo}/pulls/<PR>/comments/<id>/replies -X POST -f body='Fixed in <sha>: <summary>'
+   b) Top-level review summaries (no reply endpoint) → one general comment:
+      gh pr review <PR> --comment -b 'Addressed review findings: ...'
 Do NOT merge the PR — HITL merge only.
 "
 ```
