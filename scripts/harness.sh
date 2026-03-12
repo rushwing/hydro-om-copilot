@@ -70,8 +70,12 @@ check_depends() {
     elif [[ "$dep" == BUG-* ]]; then
       dep_file="${REPO_ROOT}/tasks/bugs/${dep}.md"
     fi
-    # 文件不存在：未知 ID（typo 或 stale），视为阻塞而非自动放行
+    # 若活跃目录找不到，查归档目录（归档 = 已完成，视为满足）
     if [[ -z "${dep_file:-}" || ! -f "$dep_file" ]]; then
+      if [[ -f "${REPO_ROOT}/tasks/archive/done/${dep}.md" || \
+            -f "${REPO_ROOT}/tasks/archive/cancelled/${dep}.md" ]]; then
+        continue   # 已归档，依赖满足
+      fi
       blocked_list="${blocked_list} ${dep}(not_found)"
       continue
     fi
@@ -85,6 +89,36 @@ check_depends() {
 
   if [[ -n "$blocked_list" ]]; then
     echo "${blocked_list## }"
+    return 1
+  fi
+  return 0
+}
+
+# check_related_req_conflict <bug_file>
+# 若 related_req 中任一 REQ 处于 in_progress，返回 1 并输出冲突列表。
+# 避免 bug fix 与正在实现的 REQ 并发修改同一代码区域（见 bug-standard.md §6.1）。
+check_related_req_conflict() {
+  local file="$1"
+  local related_raw=""
+  related_raw=$(grep '^related_req:' "$file" 2>/dev/null | sed 's/^related_req: *//' | tr -d '[]"') || true
+  [[ -z "${related_raw// /}" ]] && return 0
+
+  local conflict_list=""
+  while IFS= read -r req_id; do
+    req_id="${req_id//[[:space:]]/}"
+    [[ -z "$req_id" ]] && continue
+    local req_file="${REPO_ROOT}/tasks/features/${req_id}.md"
+    if [[ -f "$req_file" ]]; then
+      local req_status=""
+      req_status=$(grep '^status:' "$req_file" | awk '{print $2}' | tr -d '"')
+      if [[ "$req_status" == "in_progress" ]]; then
+        conflict_list="${conflict_list} ${req_id}(in_progress)"
+      fi
+    fi
+  done < <(echo "$related_raw" | tr ',\n' '\n')
+
+  if [[ -n "$conflict_list" ]]; then
+    echo "${conflict_list## }"
     return 1
   fi
   return 0
@@ -294,7 +328,12 @@ cmd_bugfix() {
 
   local pending_deps=""
   if ! pending_deps=$(check_depends "$bug_file"); then
-    die "${bug} 有未完成的依赖：${pending_deps}\n依赖 status=done 后方可认领（见 bug-standard.md §3.2 Serialize 策略）。"
+    die "${bug} 有未完成的依赖：${pending_deps}\n依赖 status=done/closed 后方可认领（见 bug-standard.md §3.2 Serialize 策略）。"
+  fi
+
+  local conflicts=""
+  if ! conflicts=$(check_related_req_conflict "$bug_file"); then
+    die "${bug} 的关联需求正在实现中：${conflicts}\n等关联 REQ 完成后再认领，避免并发修改同一代码区域（见 bug-standard.md §6.1）。"
   fi
 
   info "触发 Claude Code 认领并修复 ${bug} ..."
@@ -450,13 +489,18 @@ cmd_status() {
       title=$(grep '^title:' "$f" 2>/dev/null | sed 's/^title: *//')
       sev=$(grep '^severity:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       if [[ "$s" == "confirmed" && "$o" == "unassigned" ]]; then
-        local pdeps=""
-        if check_depends "$f" > /dev/null 2>&1; then
+        local pdeps="" pconflicts="" reason=""
+        pdeps=$(check_depends "$f" 2>/dev/null) || true
+        pconflicts=$(check_related_req_conflict "$f" 2>/dev/null) || true
+        if [[ -n "$pdeps" ]]; then reason="depends_on: ${pdeps}"; fi
+        if [[ -n "$pconflicts" ]]; then
+          reason="${reason:+${reason}; }related_req in_progress: ${pconflicts}"
+        fi
+        if [[ -z "$reason" ]]; then
           echo -e "  ${GREEN}●${NC} ${id} [${sev}]  ${title}"
           found=1
         else
-          pdeps=$(check_depends "$f" 2>/dev/null) || true
-          echo -e "  ${YELLOW}○${NC} ${id} [${sev}]  ${title}  (blocked: ${pdeps})"
+          echo -e "  ${YELLOW}○${NC} ${id} [${sev}]  ${title}  (blocked: ${reason})"
         fi
       fi
     done
