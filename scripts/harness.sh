@@ -31,9 +31,10 @@ CLAUDE_CMD=(claude --dangerously-skip-permissions -p)
 # CLAUDE_APPROVAL 可覆盖（如 CI 注入自定义 flag）
 if [[ -n "${CLAUDE_APPROVAL:-}" ]]; then CLAUDE_CMD=(claude "$CLAUDE_APPROVAL" -p); fi
 # zsh 数组：避免变量含空格时被当成单一命令名执行
-# review 需要调 gh（网络），--dangerously-bypass-approvals-and-sandbox 跳过 sandbox + 审批
+# review / tc-design 均需调 gh（git push、pr create/merge），需要网络访问
 CODEX_REVIEW=(codex exec --dangerously-bypass-approvals-and-sandbox)
-# 其他任务（tc-design 等）只需写文件，workspace-write 足够
+# tc-design 也走 CODEX_REVIEW：Claim PR mutex 需要 git push + gh pr create/merge
+# CODEX_EXEC 保留供未来只需 workspace-write 的任务使用
 CODEX_EXEC=(codex exec --full-auto)
 
 # ── 颜色 ──────────────────────────────────────────────────────────────────────
@@ -343,7 +344,8 @@ cmd_tc_design() {
   info "触发 Codex TC 设计 ${req} ..."
   local tmp_out session_log="${REPO_ROOT}/.harness_sessions"
   tmp_out=$(mktemp)
-  "${CODEX_EXEC[@]}" "
+  # tc-design 的 Claim PR mutex 需要 git push + gh pr create/merge，必须用 --dangerously-bypass-approvals-and-sandbox
+  "${CODEX_REVIEW[@]}" "
 Read agents/openai-codex/SOUL.md, harness/testing-standard.md, harness/requirement-standard.md.
 
 Your task: design acceptance test cases for ${req}.
@@ -401,12 +403,25 @@ cmd_bugfix() {
 
   local conflicts=""
   if ! conflicts=$(check_related_req_conflict "$bug_file"); then
-    if [[ -n "$bundle_branch" ]]; then
-      info "Bundle 模式：将直接在 ${bundle_branch} 上修复，不开独立 PR"
-    elif [[ -n "$stacked_base" ]]; then
-      info "Stacked PR 模式：fix PR base 将指向 ${stacked_base}"
+    # Extract the REQ id from the supplied branch to verify it covers a real conflict
+    local branch_req=""
+    [[ -n "$bundle_branch"  ]] && branch_req=$(echo "$bundle_branch"  | grep -oE '(REQ|BUG)-[0-9]+' | head -1) || true
+    [[ -n "$stacked_base"   ]] && branch_req=$(echo "$stacked_base"   | grep -oE '(REQ|BUG)-[0-9]+' | head -1) || true
+
+    local branch_covers_conflict=0
+    if [[ -n "$branch_req" ]] && echo "$conflicts" | grep -qF "$branch_req"; then
+      branch_covers_conflict=1
+    fi
+
+    if [[ $branch_covers_conflict -eq 1 && -n "$bundle_branch" ]]; then
+      info "Bundle 模式：${branch_req} 冲突由 ${bundle_branch} 处理，将直接在该分支上修复"
+    elif [[ $branch_covers_conflict -eq 1 && -n "$stacked_base" ]]; then
+      info "Stacked PR 模式：${branch_req} 冲突由 base 分支 ${stacked_base} 处理"
     else
-      die "${bug} 的关联需求正在实现中：${conflicts}\n请选择：\n  1. Bundle（同一特性内的 Bug）：harness bugfix --bundle <REQ分支> ${bug}\n     → 直接提交到 feat/REQ-xxx 分支，合并进同一 PR\n  2. Stacked PR（紧急/必须先于依赖合并）：harness bugfix --stacked <REQ分支> ${bug}\n     → 独立 fix 分支，PR base 指向 REQ 分支\n  3. 等 REQ 完成后再认领（推荐用于低优先级 Bug）\n（见 agent-cli-playbook.md §PR 依赖链处理）"
+      local extra=""
+      [[ -n "$bundle_branch$stacked_base" && $branch_covers_conflict -eq 0 ]] \
+        && extra="\n提供的分支（${bundle_branch}${stacked_base}）未覆盖冲突 REQ：${conflicts}"
+      die "${bug} 的关联需求正在实现中：${conflicts}${extra}\n请选择：\n  1. Bundle（同一特性内的 Bug）：harness bugfix --bundle <REQ分支> ${bug}\n     → 直接提交到 feat/REQ-xxx 分支，合并进同一 PR\n  2. Stacked PR（紧急/必须先于依赖合并）：harness bugfix --stacked <REQ分支> ${bug}\n     → 独立 fix 分支，PR base 指向 REQ 分支\n  3. 等 REQ 完成后再认领（推荐用于低优先级 Bug）\n（见 agent-cli-playbook.md §PR 依赖链处理）"
     fi
   fi
 
