@@ -173,8 +173,16 @@ cmd_review() {
   [[ -n "$pr_diff" ]] || die "PR #${pr} diff 为空，无法进行 review"
 
   # ── 查找关联 REQ/BUG 并内联内容 ─────────────────────────────────────────────
+  # Priority: 1) PR title/body  2) changed tasks/ files in diff  3) branch name
   local task_id task_section=""
   task_id=$(echo "$pr_title $pr_body" | grep -oE '(REQ|BUG)-[0-9]+' | head -1) || task_id=""
+  if [[ -z "$task_id" ]]; then
+    task_id=$(echo "$pr_diff" | grep -E '^(\+\+\+|---) [ab]/tasks/(features|bugs)/' \
+      | grep -oE '(REQ|BUG)-[0-9]+' | head -1) || true
+  fi
+  if [[ -z "$task_id" ]]; then
+    task_id=$(echo "$pr_head" | grep -oE '(REQ|BUG)-[0-9]+' | head -1) || true
+  fi
   # Helper: fetch a file at the PR head ref via GitHub API (avoids local-checkout staleness)
   _fetch_pr_file() {
     local rel_path="$1"
@@ -585,7 +593,7 @@ cmd_fix_review() {
   local inline_comments=""
   inline_comments=$(gh api --paginate "repos/{owner}/{repo}/pulls/${pr}/comments" \
     --jq '[.[] | select(.in_reply_to_id == null) | select(.position != null)
-               | {id: .id, author: .user.login, path: .path, line: .original_line, body: .body}]') \
+               | {id: .id, author: .user.login, path: .path, line: .line, original_line: .original_line, body: .body}]') \
     || die "无法获取 PR #${pr} inline comments（gh API 失败）"
 
   # 如果两类 comment 都为空或空数组，提前退出
