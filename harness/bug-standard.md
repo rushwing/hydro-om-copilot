@@ -43,9 +43,9 @@ last_reviewed: 2026-03-12
 ### 3.1 目录位置
 
 ```text
-requirements/bugs/BUG-xxx.md       # 活跃 Bug
-requirements/archive/done/         # 已关闭 Bug
-requirements/archive/cancelled/    # 已标记 wont_fix 的 Bug
+tasks/bugs/BUG-xxx.md       # 活跃 Bug
+tasks/archive/done/         # 已关闭 Bug
+tasks/archive/cancelled/    # 已标记 wont_fix 的 Bug
 ```
 
 ### 3.2 Bug 文档必须包含的字段
@@ -180,7 +180,7 @@ open → confirmed → in_progress → fixed → regressing → closed
 | 项目 | 内容 |
 |---|---|
 | 分支命名 | `fix/BUG-001-<short-description>` |
-| 第一个 commit | 只改 `requirements/bugs/BUG-xxx.md`：`owner` → 自身标识，`status` → `in_progress` |
+| 第一个 commit | 只改 `tasks/bugs/BUG-xxx.md`：`owner` → 自身标识，`status` → `in_progress` |
 | commit message | `claim: BUG-001` |
 | 竞态解决 | 同 requirement-standard §8.3，后 push 失败方重选其他 `confirmed` Bug |
 
@@ -267,3 +267,4 @@ PR 必须同时包含：
 | 版本 | 日期 | 变更摘要 |
 |---|---|---|
 | 0.1 | 2026-03-12 | 初始版本；定义 Bug 状态机、严重等级、Agent 认领规程、回归测试要求与关闭口径 |
+| 0.2 | 2026-03-12 | 目录路径由 `requirements/` 更新为 `tasks/` |
