@@ -170,7 +170,27 @@ function PendingCard({
   item: PendingArchiveItem;
   onComplete: (id: string) => void;
 }) {
+  const { addRecord } = useSessionHistory();
   const [expanded, setExpanded] = useState(false);
+
+  const handleComplete = () => {
+    if (item.source === "manual_pending") {
+      // Reconstruct a full DiagnosisResult so the item enters the proper
+      // SessionRecord audit trail (ManualArchivedCard path) with original
+      // query text and referenced KB sources.
+      addRecord(item.query ?? item.unit_id, {
+        session_id: item.id,
+        unit_id: item.unit_id || undefined,
+        root_causes: item.root_causes,
+        check_steps: item.check_steps,
+        risk_level: item.risk_level ?? "medium",
+        escalation_required: false,
+        report_draft: item.report_draft ?? undefined,
+        sources: item.sources ?? [],
+      });
+    }
+    onComplete(item.id);
+  };
 
   return (
     <div className="rounded-lg border border-surface-border bg-surface-card border-l-2 border-l-amber p-4">
@@ -213,14 +233,21 @@ function PendingCard({
       </div>
 
       {expanded && (
-        <FullReport
-          sessionId={item.id}
-          riskLevel={item.risk_level}
-          rootCauses={item.root_causes}
-          checkSteps={item.check_steps}
-          reportDraft={item.report_draft}
-          onSubmit={() => onComplete(item.id)}
-        />
+        <>
+          {item.source === "unprocessed_fault" && (
+            <div className="mt-4 rounded border border-amber/30 bg-amber/10 px-4 py-3 text-xs text-amber">
+              ⚠ 此记录为诊断未完成的待处理告警，没有 AI 报告可供提交。如需分析，请在诊断页面重新提交故障描述。
+            </div>
+          )}
+          <FullReport
+            sessionId={item.id}
+            riskLevel={item.risk_level}
+            rootCauses={item.root_causes}
+            checkSteps={item.check_steps}
+            reportDraft={item.report_draft}
+            onSubmit={item.source !== "unprocessed_fault" ? handleComplete : undefined}
+          />
+        </>
       )}
     </div>
   );
@@ -343,7 +370,11 @@ export function HistoryPage() {
   const [tab, setTab] = useState<TabKey>("待处理");
 
   const pendingItems = pendingArchive.filter((x) => !x.completed);
-  const archivedAutoItems = pendingArchive.filter((x) => x.completed);
+  // manual_pending items are promoted into SessionRecord (history) on completion,
+  // so exclude them here to avoid rendering the same diagnosis twice.
+  const archivedAutoItems = pendingArchive.filter(
+    (x) => x.completed && x.source !== "manual_pending",
+  );
 
   // Merge manual + completed-auto records sorted by timestamp desc
   const allArchived = [

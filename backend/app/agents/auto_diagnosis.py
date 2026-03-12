@@ -164,81 +164,83 @@ async def run_auto_diagnosis_streaming(
     error_str: str | None = None
 
     try:
-        async for event in auto_graph.astream_events(initial_state, version="v2"):
-            kind = event.get("event", "")
-            name = event.get("name", "")
+        try:
+            async for event in auto_graph.astream_events(initial_state, version="v2"):
+                kind = event.get("event", "")
+                name = event.get("name", "")
 
-            if kind == "on_chain_start" and name in _AUTO_NODES:
-                sl.pipeline(name, "start")
-                if on_phase:
-                    on_phase(name)
+                if kind == "on_chain_start" and name in _AUTO_NODES:
+                    sl.pipeline(name, "start")
+                    if on_phase:
+                        on_phase(name)
 
-            elif kind == "on_chain_end" and name in _AUTO_NODES:
-                output = (event.get("data") or {}).get("output") or {}
-                if isinstance(output, dict):
-                    node_outputs[name] = output
-                has_error = bool(output.get("error")) if isinstance(output, dict) else False
-                sl.pipeline(name, "error" if has_error else "end",
-                            **({"error": output.get("error")} if has_error else {}))
-                if name == "sensor_reader" and on_sensor_data:
-                    on_sensor_data(output.get("sensor_data", []))
+                elif kind == "on_chain_end" and name in _AUTO_NODES:
+                    output = (event.get("data") or {}).get("output") or {}
+                    if isinstance(output, dict):
+                        node_outputs[name] = output
+                    has_error = bool(output.get("error")) if isinstance(output, dict) else False
+                    sl.pipeline(name, "error" if has_error else "end",
+                                **({"error": output.get("error")} if has_error else {}))
+                    if name == "sensor_reader" and on_sensor_data:
+                        on_sensor_data(output.get("sensor_data", []))
 
-            elif kind == "on_chat_model_stream":
-                chunk = (event.get("data") or {}).get("chunk")
-                if chunk and getattr(chunk, "content", None):
-                    if on_token:
-                        on_token(chunk.content)
+                elif kind == "on_chat_model_stream":
+                    chunk = (event.get("data") or {}).get("chunk")
+                    if chunk and getattr(chunk, "content", None):
+                        if on_token:
+                            on_token(chunk.content)
 
-    except Exception as exc:
-        _logger.error(
-            "auto diagnosis streaming failed | unit=%s | %s",
-            summary.unit_id,
-            exc,
-            exc_info=True,
+        except Exception as exc:
+            _logger.error(
+                "auto diagnosis streaming failed | unit=%s | %s",
+                summary.unit_id,
+                exc,
+                exc_info=True,
+            )
+            sl.pipeline("__session__", "error", error=str(exc))
+            error_str = str(exc)
+
+        # Merge node outputs to reconstruct final state fields
+        merged: dict = {}
+        for node_name in ("symptom_parser", "retrieval", "reasoning", "report_gen"):
+            if node_name in node_outputs:
+                merged.update(node_outputs[node_name])
+
+        record = AutoDiagnosisRecord(
+            session_id=session_id,
+            unit_id=summary.unit_id,
+            fault_types=summary.fault_types,
+            symptom_text=summary.symptom_text,
+            risk_level=merged.get("risk_level", "medium"),
+            escalation_required=merged.get("escalation_required", False),
+            escalation_reason=merged.get("escalation_reason"),
+            root_causes=merged.get("root_causes", []),
+            check_steps=merged.get("check_steps", []),
+            report_draft=merged.get("report_draft"),
+            sources=merged.get("sources", []),
+            error=error_str,
         )
-        sl.pipeline("__session__", "error", error=str(exc))
-        error_str = str(exc)
 
-    # Merge node outputs to reconstruct final state fields
-    merged: dict = {}
-    for node_name in ("symptom_parser", "retrieval", "reasoning", "report_gen"):
-        if node_name in node_outputs:
-            merged.update(node_outputs[node_name])
+        top_cause = record.root_causes[0].get("title") if record.root_causes else None
+        sl.finalize(
+            risk_level=record.risk_level,
+            top_cause=top_cause,
+            escalation_required=record.escalation_required,
+            sop_steps_total=len(record.check_steps),
+            error=record.error,
+        )
 
-    record = AutoDiagnosisRecord(
-        session_id=session_id,
-        unit_id=summary.unit_id,
-        fault_types=summary.fault_types,
-        symptom_text=summary.symptom_text,
-        risk_level=merged.get("risk_level", "medium"),
-        escalation_required=merged.get("escalation_required", False),
-        escalation_reason=merged.get("escalation_reason"),
-        root_causes=merged.get("root_causes", []),
-        check_steps=merged.get("check_steps", []),
-        report_draft=merged.get("report_draft"),
-        sources=merged.get("sources", []),
-        error=error_str,
-    )
+        store.push(record)
+        if on_phase:
+            on_phase("done" if not error_str else "error")
 
-    top_cause = record.root_causes[0].get("title") if record.root_causes else None
-    sl.finalize(
-        risk_level=record.risk_level,
-        top_cause=top_cause,
-        escalation_required=record.escalation_required,
-        sop_steps_total=len(record.check_steps),
-        error=record.error,
-    )
-    remove_session_logger(session_id)
-
-    store.push(record)
-    if on_phase:
-        on_phase("done" if not error_str else "error")
-
-    _logger.info(
-        "auto diagnosis streaming stored | unit=%s session=%s risk=%s error=%s",
-        summary.unit_id,
-        session_id,
-        record.risk_level,
-        record.error,
-    )
-    return record
+        _logger.info(
+            "auto diagnosis streaming stored | unit=%s session=%s risk=%s error=%s",
+            summary.unit_id,
+            session_id,
+            record.risk_level,
+            record.error,
+        )
+        return record
+    finally:
+        remove_session_logger(session_id)

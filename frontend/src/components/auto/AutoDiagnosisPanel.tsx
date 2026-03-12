@@ -173,10 +173,9 @@ function UnitCooldownGrid({ cooldowns }: { cooldowns: Record<string, number> }) 
 
 interface FaultQueueListProps {
   queue: PendingFaultItem[];
-  onSelect: (index: number) => void;
 }
 
-function FaultQueueList({ queue, onSelect }: FaultQueueListProps) {
+function FaultQueueList({ queue }: FaultQueueListProps) {
   return (
     <div className="rounded-lg border border-surface-border bg-surface-card p-4">
       <h3 className="font-display text-xs uppercase tracking-wider text-text-muted mb-3 flex items-center gap-2">
@@ -195,8 +194,7 @@ function FaultQueueList({ queue, onSelect }: FaultQueueListProps) {
             return (
               <div
                 key={`${item.unit_id}-${item.queued_at}-${i}`}
-                onClick={() => onSelect(i)}
-                className={`rounded border px-3 py-2 text-xs cursor-pointer transition-colors hover:border-amber/40 ${
+                className={`rounded border px-3 py-2 text-xs ${
                   isFirst
                     ? "border-amber/30 bg-amber/10"
                     : "border-surface-border bg-surface-elevated"
@@ -355,7 +353,7 @@ interface AutoDiagnosisPanelProps {
 }
 
 export function AutoDiagnosisPanel({ isManualRunning = false }: AutoDiagnosisPanelProps) {
-  const { enabled, status, results, setSelectedIndex } = useAutoStore();
+  const { enabled, status, results, setSelectedSessionId } = useAutoStore();
   const { start, stop } = useAutoDiagnosis();
 
   const isRunning = status?.running ?? false;
@@ -404,7 +402,7 @@ export function AutoDiagnosisPanel({ isManualRunning = false }: AutoDiagnosisPan
           <UnitCooldownGrid cooldowns={status.unit_cooldowns} />
           {status.current && <CurrentDiagnosisCard current={status.current} />}
           {status.pending_queue.length > 0 && (
-            <FaultQueueList queue={status.pending_queue} onSelect={setSelectedIndex} />
+            <FaultQueueList queue={status.pending_queue} />
           )}
         </>
       )}
@@ -416,10 +414,10 @@ export function AutoDiagnosisPanel({ isManualRunning = false }: AutoDiagnosisPan
             最近诊断结果
           </h3>
           <div className="space-y-2">
-            {results.slice(0, 5).map((rec, i) => (
+            {results.slice(0, 5).map((rec) => (
               <div
                 key={rec.session_id}
-                onClick={() => setSelectedIndex(i)}
+                onClick={() => setSelectedSessionId(rec.session_id)}
                 className="rounded border border-surface-border bg-surface-elevated px-3 py-2 text-xs flex items-center justify-between gap-2 cursor-pointer hover:border-amber/30 transition-colors"
               >
                 <div className="flex items-center gap-2 min-w-0">

@@ -24,8 +24,10 @@ async function postAutoStart(): Promise<void> {
   await fetch(`${API_BASE}/diagnosis/auto/start`, { method: "POST" });
 }
 
-async function postAutoStop(): Promise<void> {
-  await fetch(`${API_BASE}/diagnosis/auto/stop`, { method: "POST" });
+async function postAutoStop(): Promise<{ dropped_queue: import("@/types/diagnosis").PendingFaultItem[] }> {
+  const res = await fetch(`${API_BASE}/diagnosis/auto/stop`, { method: "POST" });
+  if (!res.ok) return { dropped_queue: [] };
+  return res.json();
 }
 
 async function postResetCooldowns(): Promise<void> {
@@ -33,7 +35,7 @@ async function postResetCooldowns(): Promise<void> {
 }
 
 export function useAutoDiagnosis() {
-  const { enabled, status, setEnabled, setStatus, setResults, addToPending } =
+  const { enabled, setEnabled, setStatus, setResults, addToPending } =
     useAutoStore();
 
   useEffect(() => {
@@ -75,11 +77,13 @@ export function useAutoDiagnosis() {
   };
 
   const stop = async () => {
-    await postAutoStop();
-    // Move unprocessed queue items to pending archive
-    const pendingQueue = status?.pending_queue ?? [];
-    for (const item of pendingQueue) {
-      const archiveItem: PendingArchiveItem = {
+    // Backend atomically clears _pending and returns the snapshot — use that
+    // instead of stale polled status to avoid archiving items the worker
+    // already started processing.
+    const { dropped_queue } = await postAutoStop();
+    const now = new Date().toISOString();
+    for (const item of dropped_queue) {
+      addToPending({
         id: `unprocessed-${item.unit_id}-${item.queued_at}`,
         unit_id: item.unit_id,
         fault_types: item.fault_types,
@@ -88,11 +92,10 @@ export function useAutoDiagnosis() {
         check_steps: [],
         report_draft: null,
         triggered_at: item.queued_at,
-        archived_at: new Date().toISOString(),
+        archived_at: now,
         source: "unprocessed_fault",
         completed: false,
-      };
-      addToPending(archiveItem);
+      } satisfies PendingArchiveItem);
     }
     // Keep enabled=true so results remain visible; user can toggle manually
   };

@@ -133,4 +133,8 @@ export interface PendingArchiveItem {
   archived_at: string;
   source: "auto_diagnosed" | "unprocessed_fault" | "manual_pending";
   completed: boolean;
+  /** Original operator query — populated for manual_pending items */
+  query?: string;
+  /** Referenced KB document IDs — populated for manual_pending items */
+  sources?: string[];
 }

@@ -97,9 +97,10 @@ class TestStartStopStateMachine:
             await svc.start()
             worker_before_stop = svc._worker_task
 
-            was_running = await svc.stop()
+            result = await svc.stop()
 
-            assert was_running is True
+            assert result["was_running"] is True
+            assert result["dropped"] == []     # nothing was queued
             assert not svc.running             # polling is gone
             assert svc._worker_alive           # worker still running
             assert svc._worker_task is worker_before_stop
@@ -155,8 +156,33 @@ class TestStartStopStateMachine:
     @pytest.mark.asyncio
     async def test_stop_returns_false_when_not_running(self):
         svc = _make_service()
-        was_running = await svc.stop()
-        assert was_running is False
+        result = await svc.stop()
+        assert result["was_running"] is False
+        assert result["dropped"] == []
+
+    @pytest.mark.asyncio
+    async def test_stop_clears_pending_queue_and_returns_snapshot(self):
+        """stop() must atomically drain _pending and return the dropped items."""
+        from mcp_servers.fault_aggregator import FaultSummary
+        svc = _make_service()
+        # Enqueue two items without starting polling
+        svc.enqueue(FaultSummary(
+            unit_id="#1机", fault_types=["vibration_swing"],
+            anomaly_points=[], symptom_text="振动偏高", sensor_reports=[],
+        ))
+        svc.enqueue(FaultSummary(
+            unit_id="#2机", fault_types=["governor_oil_pressure"],
+            anomaly_points=[], symptom_text="油压异常", sensor_reports=[],
+        ))
+        assert len(svc._pending) == 2
+
+        result = await svc.stop()
+
+        assert result["was_running"] is False
+        assert len(result["dropped"]) == 2
+        assert len(svc._pending) == 0          # queue cleared
+        units = {d["unit_id"] for d in result["dropped"]}
+        assert units == {"#1机", "#2机"}
 
 
 # ── pending_queue.queued_at stability ────────────────────────────────────────

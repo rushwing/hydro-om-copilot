@@ -28,13 +28,13 @@ interface AutoStore {
   enabled: boolean;
   status: AutoDiagnosisStatus | null;
   results: AutoDiagnosisRecord[];
-  selectedIndex: number;
+  selectedSessionId: string | null;
   pendingArchive: PendingArchiveItem[];
   toasts: ToastItem[];
   setEnabled: (v: boolean) => void;
   setStatus: (s: AutoDiagnosisStatus) => void;
   setResults: (r: AutoDiagnosisRecord[]) => void;
-  setSelectedIndex: (i: number) => void;
+  setSelectedSessionId: (id: string | null) => void;
   addToPending: (item: PendingArchiveItem) => void;
   completePending: (id: string) => void;
   addToast: (message: string) => void;
@@ -45,12 +45,12 @@ export const useAutoStore = create<AutoStore>()((set) => ({
   enabled: false,
   status: null,
   results: [],
-  selectedIndex: 0,
+  selectedSessionId: null,
   pendingArchive: loadPending(),
   setEnabled: (v) => set({ enabled: v }),
   setStatus: (s) => set({ status: s }),
   setResults: (r) => set({ results: r }),
-  setSelectedIndex: (i) => set({ selectedIndex: i }),
+  setSelectedSessionId: (id) => set({ selectedSessionId: id }),
   addToPending: (item) =>
     set((state) => {
       if (state.pendingArchive.some((p) => p.id === item.id)) return state;

@@ -4,14 +4,20 @@ from typing import Any
 from pydantic import Field
 from pydantic_settings import (
     BaseSettings,
+    DotEnvSettingsSource,
     EnvSettingsSource,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
 )
 
 
-class _EnvSource(EnvSettingsSource):
-    """Extends EnvSettingsSource to accept comma-separated strings for list fields."""
+class _CommaSepMixin:
+    """Decode comma-separated strings for list fields.
+
+    Applied to both the OS-env source and the dotenv source so that
+    ``CORS_ORIGINS=http://localhost:5173,http://localhost:3000`` works in
+    either location.
+    """
 
     def decode_complex_value(self, field_name: str, field: Any, value: Any) -> Any:
         if isinstance(value, str):
@@ -22,7 +28,15 @@ class _EnvSource(EnvSettingsSource):
                 return json.loads(stripped)
             # comma-separated fallback (e.g. CORS_ORIGINS=a,b,c)
             return [x.strip() for x in stripped.split(",") if x.strip()]
-        return super().decode_complex_value(field_name, field, value)
+        return super().decode_complex_value(field_name, field, value)  # type: ignore[misc]
+
+
+class _EnvSource(_CommaSepMixin, EnvSettingsSource):
+    """OS environment variables with comma-sep list support."""
+
+
+class _DotEnvSource(_CommaSepMixin, DotEnvSettingsSource):
+    """.env file with comma-sep list support."""
 
 
 class Settings(BaseSettings):
@@ -100,7 +114,7 @@ class Settings(BaseSettings):
         return (
             init_settings,
             _EnvSource(settings_cls),
-            dotenv_settings,
+            _DotEnvSource(settings_cls),
             file_secret_settings,
         )
 

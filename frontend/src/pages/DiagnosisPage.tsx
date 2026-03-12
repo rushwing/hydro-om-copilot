@@ -319,9 +319,11 @@ function ManualResultsPanel({ result, query }: { result: DiagnosisResult | null;
       archived_at: new Date().toISOString(),
       source: "manual_pending",
       completed: false,
+      query,
+      sources: result.sources,
     } satisfies PendingArchiveItem);
     setArchivedId(sessionId);
-  }, [result, sessionId, isArchived, addToPending]);
+  }, [result, sessionId, isArchived, addToPending, query]);
 
   const handleSubmitArchive = useCallback(() => {
     if (!result || !canSubmit) return;
@@ -439,7 +441,7 @@ function ManualResultsPanel({ result, query }: { result: DiagnosisResult | null;
 // ── Auto result panel ─────────────────────────────────────────────────────────
 
 function AutoResultPanel() {
-  const { results, selectedIndex, setSelectedIndex, addToPending, pendingArchive, addToast } =
+  const { results, selectedSessionId, setSelectedSessionId, addToPending, pendingArchive, addToast } =
     useAutoStore();
 
   const handledRef = useRef<Set<string>>(new Set());
@@ -475,7 +477,7 @@ function AutoResultPanel() {
 
   // Manage per-result timers; skip errored records entirely
   useEffect(() => {
-    const viewedId = results[selectedIndex]?.session_id;
+    const viewedId = selectedSessionId ?? results[0]?.session_id;
 
     results.forEach((rec) => {
       // Errored records: notify once, never archive
@@ -516,25 +518,26 @@ function AutoResultPanel() {
         timersRef.current.delete(id);
       }
     });
-  }, [results, selectedIndex, pendingArchive, archiveRecord, addToast]);
+  }, [results, selectedSessionId, pendingArchive, archiveRecord, addToast]);
 
   useEffect(() => {
     return () => { timersRef.current.forEach((t) => clearTimeout(t)); };
   }, []);
 
-  const record = results[selectedIndex] ?? results[0] ?? null;
+  const record = results.find((r) => r.session_id === selectedSessionId) ?? results[0] ?? null;
+  const currentPos = record ? results.findIndex((r) => r.session_id === record.session_id) : -1;
 
   const handlePending = () => {
     if (!record || record.error) return;
     archiveRecord(record, "manual");
-    const nextIdx = results.findIndex(
+    const nextRec = results.find(
       (r, i) =>
-        i > selectedIndex &&
+        i > currentPos &&
         !r.error &&
         !handledRef.current.has(r.session_id) &&
         !pendingArchive.some((p) => p.id === r.session_id),
     );
-    if (nextIdx !== -1) setSelectedIndex(nextIdx);
+    if (nextRec) setSelectedSessionId(nextRec.session_id);
   };
 
   if (!record) {
@@ -565,14 +568,14 @@ function AutoResultPanel() {
       {/* Navigation */}
       <div className="flex items-center justify-between gap-2 rounded-lg border border-surface-border bg-surface-card px-4 py-3">
         <button
-          onClick={() => setSelectedIndex(Math.max(0, selectedIndex - 1))}
-          disabled={selectedIndex === 0}
+          onClick={() => { const p = results[currentPos - 1]; if (p) setSelectedSessionId(p.session_id); }}
+          disabled={currentPos <= 0}
           className="px-2 py-1 text-xs rounded border border-surface-border text-text-secondary hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed"
         >
           ← 上一条
         </button>
         <span className="text-xs text-text-muted text-center">
-          {selectedIndex + 1} / {results.length}
+          {currentPos + 1} / {results.length}
           {results[0] && (
             <span className="ml-2 text-text-secondary">
               最新: {results[0].unit_id} {results[0].fault_types[0]}
@@ -580,8 +583,8 @@ function AutoResultPanel() {
           )}
         </span>
         <button
-          onClick={() => setSelectedIndex(Math.min(results.length - 1, selectedIndex + 1))}
-          disabled={selectedIndex >= results.length - 1}
+          onClick={() => { const p = results[currentPos + 1]; if (p) setSelectedSessionId(p.session_id); }}
+          disabled={currentPos >= results.length - 1}
           className="px-2 py-1 text-xs rounded border border-surface-border text-text-secondary hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed"
         >
           下一条 →
