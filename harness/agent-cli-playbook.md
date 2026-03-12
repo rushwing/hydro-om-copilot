@@ -86,42 +86,51 @@ Report any failures. Fix lint/format issues automatically. Do not fix type error
 # 交互式
 codex
 
-# 非交互式，全自动（适合 CI/无人值守）
-codex --approval-mode full-auto "prompt"
+# 非交互式，全自动（workspace-write sandbox，on-request approval）
+codex exec --full-auto "prompt"
 
-# 半自动（写文件前确认，适合人工监督）
-codex --approval-mode auto-edit "prompt"
+# 需要网络访问时（如 gh pr review 需要连 GitHub API）
+codex exec -a never -s danger-full-access "prompt"
 ```
+
+> **推荐直接使用 `scripts/harness.sh`**，它会自动选择正确的 sandbox 模式和预注入上下文。
+> 下列模板供理解原理或手动调试使用。
 
 ### 模板 E · TC 设计（Acceptance Test Design）
 
 ```bash
-codex --approval-mode auto-edit "
-Read agents/openai-codex/SOUL.md, harness/testing-standard.md, and harness/requirement-standard.md.
-Design acceptance test cases for REQ-<N>: read tasks/features/REQ-<N>.md fully.
-Create tasks/test-cases/TC-<N>-<desc>.md following testing-standard.md §TC 文档结构.
-After creating the TC file:
-  1. Update tasks/features/REQ-<N>.md: add TC-<N> to test_case_ref, set status=test_designed, owner=unassigned
-  2. Use the Claim PR mutex (claim/REQ-<N>-tc branch) as defined in requirement-standard.md §8.2 Mode A
+codex exec --full-auto "
+Read agents/openai-codex/SOUL.md, harness/testing-standard.md, harness/requirement-standard.md.
+
+Your task: design acceptance test cases for REQ-<N>.
+
+IMPORTANT — claim mutex first, then do the work:
+1. Claim PR FIRST: branch claim/REQ-<N>-tc, single-file commit (owner→openai_codex only),
+   push, open PR titled 'claim: REQ-<N>-tc', enable auto-merge, wait for merge.
+   If merge fails (conflict) → another agent claimed it, stop.
+2. Only after claim succeeds: create branch test/REQ-<N>-tc-design
+3. Read tasks/features/REQ-<N>.md fully
+4. Create tasks/test-cases/TC-<N>-<desc>.md per testing-standard.md §TC 文档结构
+5. Update tasks/features/REQ-<N>.md: add TC to test_case_ref, status=test_designed, owner=unassigned
+6. Open PR for TC design (requires human review — do NOT auto-merge)
 "
 ```
 
 ### 模板 F · PR Code Review
 
+> 使用 `scripts/harness.sh review <PR号>` 代替手动调用，脚本会预注入 PR diff 和关联 REQ 内容。
+
 ```bash
-codex --approval-mode full-auto "
+# PR diff 和 REQ 内容由 harness.sh 预注入，无需 agent 自行探索
+codex exec -a never -s danger-full-access "
 Read agents/openai-codex/SOUL.md, then harness/review-standard.md.
 
-Review PR #<N>:
-1. gh pr diff <N>          — see all changes
-2. gh pr view <N>          — get title, description, linked REQ
-3. Read tasks/features/REQ-<N>.md — focus on Acceptance Criteria
-4. Check against review-standard.md: 契约一致性, 安全性, 测试质量, 代码可读性
+## Pre-fetched context for PR #<N>
+[由 harness.sh 自动填充]
 
-Post findings:
-  gh pr review <N> --comment -b '...'         # non-blocking notes
-  gh pr review <N> --request-changes -b '...' # blocking issues
-
+Check per review-standard.md. Post findings:
+  gh pr review <N> --comment -b '...'         # non-blocking
+  gh pr review <N> --request-changes -b '...' # blocking
 Do NOT merge. HITL merge only.
 "
 ```
@@ -129,7 +138,7 @@ Do NOT merge. HITL merge only.
 ### 模板 G · Bug 上报
 
 ```bash
-codex --approval-mode auto-edit "
+codex exec --full-auto "
 Read agents/openai-codex/SOUL.md and harness/bug-standard.md.
 A potential bug was observed: <description of observed behavior>.
 
@@ -145,7 +154,7 @@ A potential bug was observed: <description of observed behavior>.
 ### 模板 H · 文档与代码一致性审查
 
 ```bash
-codex --approval-mode full-auto "
+codex exec --full-auto "
 Read agents/openai-codex/SOUL.md.
 Audit consistency between:
   - backend/app/agents/state.py (AgentState fields)
@@ -162,13 +171,13 @@ Do not modify frozen files (list in CLAUDE.md §架构约束).
 
 ```bash
 # 查看当前可认领任务
-python scripts/agent-loop.py   # stub：仅打印列表
+./scripts/harness.sh status
 
 # 手动触发 TC 设计（openai_codex）
-codex --approval-mode auto-edit "$(cat harness/agent-cli-playbook.md | grep -A 20 '模板 E')"
+./scripts/harness.sh tc-design REQ-<N>
 
 # 手动触发实现（claude_code）
-claude -p "$(cat harness/agent-cli-playbook.md | grep -A 15 '模板 B')"
+./scripts/harness.sh implement REQ-<N>
 ```
 
 ---
