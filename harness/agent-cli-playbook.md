@@ -64,9 +64,11 @@ IMPORTANT — use Claim PR mutex first (same pattern as REQ implementation):
    If merge fails (conflict) → another agent claimed it, stop.
 2. Only after claim merges: branch fix/BUG-<N>-<short-desc>
 3. Read tasks/bugs/BUG-<N>.md fully — reproduction steps, related_req, related_tc
-4. Fix the bug + add regression test + fill 根因分析/修复方案
-5. bash scripts/local/test.sh must pass before opening PR
-6. Open PR, then set status=fixed in BUG-<N>.md
+4. Fix the bug + add regression test
+5. In the same commit (or final commit before PR): set status=fixed, fill 根因分析/修复方案 in BUG-<N>.md
+   (per bug-standard.md §6.3: status=fixed transition must be inside the PR, not after)
+6. bash scripts/local/test.sh must pass before opening PR
+7. Open PR
 "
 ```
 

@@ -354,9 +354,10 @@ IMPORTANT — use Claim PR mutex first (same as REQ implementation):
 3. Read tasks/bugs/${bug}.md fully — reproduction steps, related_req, related_tc
 4. Fix the bug
 5. Add regression test (required per bug-standard.md §7)
-6. Fill in 根因分析 and 修复方案 in tasks/bugs/${bug}.md
+6. In the same commit (or final commit before PR): set status=fixed, fill 根因分析 and 修复方案 in tasks/bugs/${bug}.md
+   (per bug-standard.md §6.3: the PR itself must contain the status=fixed transition + RCA)
 7. bash scripts/local/test.sh must pass before opening PR
-8. Open PR, then set status=fixed in tasks/bugs/${bug}.md (fixed = PR exists, per bug-standard.md §5.1)
+8. Open PR
 "
 }
 
@@ -374,16 +375,19 @@ cmd_fix_review() {
   pr_head=$(gh pr view  "$pr" --json headRefName -q '.headRefName')
   pr_base=$(gh pr view  "$pr" --json baseRefName -q '.baseRefName')
 
-  # 拉取 review 顶层 comments
+  # 拉取 review 顶层 comments（分页，排除空 body）
   local review_comments=""
-  review_comments=$(gh api "repos/{owner}/{repo}/pulls/${pr}/reviews" \
-    --jq '[.[] | select(.state=="COMMENTED" or .state=="CHANGES_REQUESTED") | {id: .id, author: .user.login, state: .state, body: .body}]' \
+  review_comments=$(gh api --paginate "repos/{owner}/{repo}/pulls/${pr}/reviews" \
+    --jq '[.[] | select((.state=="COMMENTED" or .state=="CHANGES_REQUESTED") and (.body | length > 0))
+               | {id: .id, author: .user.login, state: .state, body: .body}]' \
     2>/dev/null) || review_comments="[]"
 
-  # 拉取 inline review comments（逐行批注）— 含 id 供 agent 回复
+  # 拉取 inline review comments（分页，排除 reply 和 outdated）
+  # in_reply_to_id != null → 是回复，跳过；position == null → outdated，跳过
   local inline_comments=""
-  inline_comments=$(gh api "repos/{owner}/{repo}/pulls/${pr}/comments" \
-    --jq '[.[] | {id: .id, author: .user.login, path: .path, line: .original_line, body: .body}]' \
+  inline_comments=$(gh api --paginate "repos/{owner}/{repo}/pulls/${pr}/comments" \
+    --jq '[.[] | select(.in_reply_to_id == null) | select(.position != null)
+               | {id: .id, author: .user.login, path: .path, line: .original_line, body: .body}]' \
     2>/dev/null) || inline_comments="[]"
 
   # 如果两类 comment 都为空或空数组，提前退出

@@ -185,7 +185,8 @@ open → confirmed → in_progress → fixed → regressing → closed
 
 - [ ] `status == confirmed`
 - [ ] `owner == unassigned`
-- [ ] `related_req` 中涉及的 REQ 无正在进行的 `in_progress` 项（避免同时修改同一代码区域）
+- [ ] `related_req` 中涉及的 REQ 无正在进行的 `in_progress` 项（避免同时修改同一代码区域）；
+  **例外**：若采用 Stacked PR 策略（fix PR base 指向 REQ 分支），允许 related_req 处于 `in_progress`（见 agent-cli-playbook.md §Stacked PR）
 
 ### 6.2 认领规则（仅 repo 内 Bug 适用）
 
