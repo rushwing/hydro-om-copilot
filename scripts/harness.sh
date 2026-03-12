@@ -12,7 +12,9 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CLAUDE_APPROVAL="${CLAUDE_APPROVAL:-}"        # 留空则交互式
-# codex exec --full-auto: non-interactive, workspace-write sandbox, on-request approval
+# review 需要调 gh（网络），必须用 danger-full-access 绕过 sandbox 网络限制
+CODEX_REVIEW="codex exec -a never -s danger-full-access"
+# 其他任务（tc-design 等）只需写文件，workspace-write 足够
 CODEX_EXEC="codex exec --full-auto"
 
 # ── 颜色 ──────────────────────────────────────────────────────────────────────
@@ -40,7 +42,8 @@ cmd_review() {
     || die "PR #$pr 不存在或无权访问"
 
   info "触发 Codex review PR #${pr} ..."
-  $CODEX_EXEC "
+  # review 需要 gh 调 GitHub API，必须用 danger-full-access 解除网络限制
+  $CODEX_REVIEW "
 Read agents/openai-codex/SOUL.md, then harness/review-standard.md.
 
 Your task: review PR #${pr}.
