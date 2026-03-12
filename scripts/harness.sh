@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env zsh
 # harness.sh — Harness Engineering Agent 任务触发器
 #
 # 用法:
@@ -10,7 +10,7 @@
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CLAUDE_APPROVAL="${CLAUDE_APPROVAL:-}"        # 留空则交互式
 # review 需要调 gh（网络），必须用 danger-full-access 绕过 sandbox 网络限制
 CODEX_REVIEW="codex exec -a never -s danger-full-access"
@@ -253,7 +253,7 @@ cmd_status() {
   echo -e "${CYAN}── 可 TC 设计（status=ready, owner=unassigned）──${NC}"
   if [[ -d "$features_dir" ]]; then
     local found=0
-    for f in "$features_dir"/*.md; do
+    for f in "$features_dir"/*.md(N); do
       [[ -f "$f" ]] || continue
       local s o
       s=$(grep '^status:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
@@ -274,7 +274,7 @@ cmd_status() {
   echo -e "${CYAN}── 可实现（status=test_designed, owner=unassigned）──${NC}"
   if [[ -d "$features_dir" ]]; then
     local found=0
-    for f in "$features_dir"/*.md; do
+    for f in "$features_dir"/*.md(N); do
       [[ -f "$f" ]] || continue
       local s o
       s=$(grep '^status:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
@@ -295,7 +295,7 @@ cmd_status() {
   echo -e "${CYAN}── 可修复 Bug（status=confirmed, owner=unassigned）──${NC}"
   if [[ -d "$bugs_dir" ]]; then
     local found=0
-    for f in "$bugs_dir"/*.md; do
+    for f in "$bugs_dir"/*.md(N); do
       [[ -f "$f" ]] || continue
       local s o
       s=$(grep '^status:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
