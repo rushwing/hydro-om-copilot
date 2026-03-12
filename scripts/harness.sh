@@ -12,7 +12,8 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CLAUDE_APPROVAL="${CLAUDE_APPROVAL:-}"        # 留空则交互式
-CODEX_APPROVAL="${CODEX_APPROVAL:---approval-mode full-auto}"
+# codex exec --full-auto: non-interactive, workspace-write sandbox, on-request approval
+CODEX_EXEC="codex exec --full-auto"
 
 # ── 颜色 ──────────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
@@ -39,7 +40,7 @@ cmd_review() {
     || die "PR #$pr 不存在或无权访问"
 
   info "触发 Codex review PR #${pr} ..."
-  codex $CODEX_APPROVAL "
+  $CODEX_EXEC "
 Read agents/openai-codex/SOUL.md, then harness/review-standard.md.
 
 Your task: review PR #${pr}.
@@ -126,7 +127,7 @@ cmd_tc_design() {
     || die "${req} 已被 ${owner} 认领"
 
   info "触发 Codex TC 设计 ${req} ..."
-  codex $CODEX_APPROVAL "
+  $CODEX_EXEC "
 Read agents/openai-codex/SOUL.md, harness/testing-standard.md, harness/requirement-standard.md.
 
 Your task: design acceptance test cases for ${req}.
@@ -262,7 +263,6 @@ Commands:
   status               列出当前所有可认领任务
 
 环境变量:
-  CODEX_APPROVAL   codex --approval-mode 值（默认 full-auto）
   CLAUDE_APPROVAL  claude 的 approval flag（默认空，即交互式）
 
 示例:
