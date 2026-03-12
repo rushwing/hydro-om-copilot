@@ -53,9 +53,9 @@ last_reviewed: 2026-03-12
 
 | 项目 | 内容 |
 |---|---|
-| 规则 | 只使用本规范定义的 6 个状态；禁止自行扩展近义状态 |
+| 规则 | 只使用本规范定义的 7 个状态；禁止自行扩展近义状态 |
 | 目的 | 避免多 Agent 协作时状态语义漂移 |
-| 好示例 | `ready -> in_progress -> review -> done` |
+| 好示例 | `ready -> test_designed -> in_progress -> review -> done` |
 | 坏示例 | `doing`、`wip`、`almost_done`、`ready-for-next-pass` 混用 |
 
 ---
@@ -249,13 +249,24 @@ draft → ready → test_designed → in_progress → review → done
 
 ### 8.2 认领前检查
 
-Agent 在认领需求前，必须依次确认：
+认领有两种模式，前置条件不同：
+
+**模式 A · TC 设计认领**（openai_codex 主导，`ready → test_designed`）
+
+- [ ] `status == ready`
+- [ ] `owner == unassigned`
+- [ ] `test_case_ref` 为空（尚未有 TC 文档）
+- [ ] `depends_on` 中所有项已 `done`
+- [ ] 使用相同的 Claim PR 互斥机制（`claim/REQ-xxx`，分支命名加 `-tc` 后缀区分，如 `claim/REQ-001-tc`）
+
+**模式 B · 实现认领**（claude_code 主导，`test_designed → in_progress`）
 
 - [ ] `status == test_designed`
 - [ ] `owner == unassigned`
 - [ ] `test_case_ref` 非空（TC 文档已存在于 `tasks/test-cases/`）
 - [ ] `depends_on` 中所有项已 `done`
-- [ ] 任务范围与自身当前上下文不冲突
+
+两种模式均通过 §8.3 的 Claim PR auto-merge 机制执行互斥，防止两个同类 Agent 双认领。
 
 ### 8.3 认领规则（Claim PR auto-merge 作为互斥锁）
 
@@ -417,3 +428,4 @@ blocked: [原因描述，例如"等待 PM 确认 API 字段设计" 或 "REQ-005 
 | 0.3 | 2026-03-12 | 根目录由 `requirements/` 重命名为 `tasks/`：Bug 在语义上是工作项而非规格说明，`tasks/` 对 Agent 更自然；子目录结构不变 |
 | 0.4 | 2026-03-12 | Branch-as-Lock 升级为 PR-as-Claim；修正 §8.5 分工表（openai_codex 不认领实现任务，与 SOUL.md 对齐）|
 | 0.5 | 2026-03-12 | PR-as-Claim 升级为 Claim PR auto-merge 互斥锁：git merge 冲突检测作为真正的互斥机制；Claim 分支与实现分支分离；GitHub 配置要求记录于 ci-standard.md |
+| 0.6 | 2026-03-12 | §2.3 状态数量从 6 修正为 7（补充 test_designed）；§8.2 拆分为模式 A（TC 设计认领，openai_codex）和模式 B（实现认领，claude_code），各自前置条件独立，均使用 Claim PR 互斥机制 |
