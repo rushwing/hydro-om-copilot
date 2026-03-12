@@ -68,7 +68,8 @@ owner: unassigned
 **3. 缺陷上报**
 ```
 来源：CI 失败 / 测试不通过 / review 中发现 / LLM Canary 报警
-产出：tasks/bugs/BUG-xxx.md
+默认产出：GitHub issue（见 bug-standard.md §事实源边界）
+仅在需要长期跟踪或进入 Agent 修复队列时，才提升为 tasks/bugs/BUG-xxx.md
 ```
 
 **4. 文档任务**
@@ -137,13 +138,22 @@ status: designed  # designed | implemented | passing | failing
 ### Mode C · 缺陷上报（Bug Reporting）
 
 ```
-发现 Bug 后：
+发现 Bug 后（遵循 GitHub-first 原则，见 bug-standard.md §事实源边界）：
+
 1. 确认可复现，记录复现步骤
-2. 创建分支：bug/BUG-xxx-report
-3. 创建 tasks/bugs/BUG-xxx.md（见 bug-standard.md §3.3）
-4. 填写：现象、预期行为、复现步骤、severity/priority
-5. 关联 related_req 和 related_tc（如已知）
-6. 开 PR，让 HITL 确认 Bug 真实性后 merge
+
+2. 默认路径 — 开 GitHub issue：
+   gh issue create \
+     --title '[<S1|S2|S3|S4>] <简短标题>' \
+     --body '## 现象\n...\n## 预期行为\n...\n## 复现步骤\n...\n## Severity\n<S1/S2/S3/S4 per bug-standard.md §4>\n\n## Priority\n<P0/P1/P2/P3 per bug-standard.md §4>'
+
+3. 仅在以下情况才提升为 repo Bug 文件（tasks/bugs/BUG-xxx.md）：
+   a) Bug 需要长期跟踪（跨多个会话、跨 Sprint）
+   b) Bug 需进入 Agent 自动修复队列（status=confirmed, owner=unassigned）
+   提升流程：创建分支 bug/BUG-xxx-report → 创建 tasks/bugs/BUG-xxx.md
+   → 填写 §3.3 模板 → 开 PR → HITL 确认后 merge
+
+4. 不认领修复 — 修复留给 repair queue 或 HITL 分配
 ```
 
 ### Mode D · 依赖 & API 契约审计
