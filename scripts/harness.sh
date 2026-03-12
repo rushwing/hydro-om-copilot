@@ -240,6 +240,13 @@ cmd_bugfix() {
   [[ "$owner" == "unassigned" ]] \
     || die "${bug} 已被 ${owner} 认领"
 
+  # depends_on 前置检查：有未解除依赖则拒绝认领
+  local depends_on=""
+  depends_on=$(grep '^depends_on:' "$bug_file" | sed 's/^depends_on: *//' | tr -d '[]" ') || true
+  if [[ -n "$depends_on" && "$depends_on" != "" ]]; then
+    die "${bug} 有未解除的依赖：depends_on=${depends_on}\n请等依赖合并后再认领（见 bug-standard.md §3.2 Serialize 策略）。"
+  fi
+
   info "触发 Claude Code 认领并修复 ${bug} ..."
   local tmp_out session_log="${REPO_ROOT}/.harness_sessions"
   tmp_out=$(mktemp)
@@ -281,16 +288,16 @@ cmd_fix_review() {
   pr_head=$(gh pr view  "$pr" --json headRefName -q '.headRefName')
   pr_base=$(gh pr view  "$pr" --json baseRefName -q '.baseRefName')
 
-  # 拉取 review 顶层 comments（gh pr review list）
+  # 拉取 review 顶层 comments
   local review_comments=""
   review_comments=$(gh api "repos/{owner}/{repo}/pulls/${pr}/reviews" \
-    --jq '[.[] | select(.state=="COMMENTED" or .state=="CHANGES_REQUESTED") | {author: .user.login, state: .state, body: .body}]' \
+    --jq '[.[] | select(.state=="COMMENTED" or .state=="CHANGES_REQUESTED") | {id: .id, author: .user.login, state: .state, body: .body}]' \
     2>/dev/null) || review_comments="[]"
 
-  # 拉取 inline review comments（逐行批注）
+  # 拉取 inline review comments（逐行批注）— 含 id 供 agent 回复
   local inline_comments=""
   inline_comments=$(gh api "repos/{owner}/{repo}/pulls/${pr}/comments" \
-    --jq '[.[] | {author: .user.login, path: .path, line: .original_line, body: .body, resolved: (.pull_request_review_id | tostring)}]' \
+    --jq '[.[] | {id: .id, author: .user.login, path: .path, line: .original_line, body: .body}]' \
     2>/dev/null) || inline_comments="[]"
 
   # 如果两类 comment 都为空或空数组，提前退出
@@ -300,12 +307,11 @@ cmd_fix_review() {
   fi
 
   info "触发 Claude Code 修复 PR #${pr} review findings..."
-  local tmp_out session_log="${REPO_ROOT}/.harness_sessions"
-  tmp_out=$(mktemp)
 
   local claude_cmd=(claude -p)
   if [[ -n "$CLAUDE_APPROVAL" ]]; then claude_cmd=(claude "$CLAUDE_APPROVAL" -p); fi
 
+  # 不通过 tee 管道，让 claude 直接输出到终端（保留交互式权限确认）
   "${claude_cmd[@]}" "
 Read agents/claude-code/SOUL.md and harness/review-standard.md.
 
@@ -317,7 +323,7 @@ Read agents/claude-code/SOUL.md and harness/review-standard.md.
 ### Review comments (top-level)
 ${review_comments}
 
-### Inline review comments
+### Inline review comments (each entry includes \"id\" for replying)
 ${inline_comments}
 
 ## Your task
@@ -325,19 +331,11 @@ Address every finding above:
 1. Read the referenced file+line for each inline comment
 2. Fix the issue in the code or doc (do NOT skip any comment)
 3. If a finding is invalid, leave a note in your response explaining why — do not silently ignore it
-4. After ALL fixes are committed and pushed to branch ${pr_head}, resolve each addressed comment thread:
-   gh api repos/{owner}/{repo}/pulls/comments/<comment_id>/replies -f body='Fixed in <commit-sha>: <one-line summary>'
-   (Note: GitHub does not expose a public API to mark threads resolved; replying is the standard signal)
+4. After ALL fixes are committed and pushed to branch ${pr_head}, reply to each addressed thread using its id:
+   gh api repos/{owner}/{repo}/pulls/comments/<id>/replies -X POST -f body='Fixed in <commit-sha>: <one-line summary>'
+   (GitHub has no public API to mark threads resolved; a reply is the standard signal)
 5. Do NOT merge the PR — HITL merge only
-" 2>&1 | tee "$tmp_out"
-
-  local session_id=""
-  session_id=$(grep -E 'session[- ]id[: ]+' "$tmp_out" | grep -oE '[0-9a-f-]{36}' | head -1) || true
-  if [[ -n "$session_id" ]]; then
-    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  fix-review pr=${pr}  ${session_id}" >> "$session_log"
-    ok "Session → .harness_sessions  (resume only if interrupted: codex resume ${session_id})"
-  fi
-  rm -f "$tmp_out"
+"
 }
 
 cmd_status() {
