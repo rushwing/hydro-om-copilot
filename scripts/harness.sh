@@ -65,10 +65,12 @@ cmd_review() {
   task_id=$(echo "$pr_title $pr_body" | grep -oE '(REQ|BUG)-[0-9]+' | head -1)
   if [[ -n "$task_id" ]]; then
     local task_file=""
-    [[ "$task_id" == REQ-* && -f "${REPO_ROOT}/tasks/features/${task_id}.md" ]] \
-      && task_file="${REPO_ROOT}/tasks/features/${task_id}.md"
-    [[ "$task_id" == BUG-* && -f "${REPO_ROOT}/tasks/bugs/${task_id}.md" ]] \
-      && task_file="${REPO_ROOT}/tasks/bugs/${task_id}.md"
+    if [[ "$task_id" == REQ-* && -f "${REPO_ROOT}/tasks/features/${task_id}.md" ]]; then
+      task_file="${REPO_ROOT}/tasks/features/${task_id}.md"
+    fi
+    if [[ "$task_id" == BUG-* && -f "${REPO_ROOT}/tasks/bugs/${task_id}.md" ]]; then
+      task_file="${REPO_ROOT}/tasks/bugs/${task_id}.md"
+    fi
     if [[ -n "$task_file" ]]; then
       task_section="### Associated task: ${task_id}
 $(cat "$task_file")
@@ -81,10 +83,12 @@ $(cat "$task_file")
 
   # ── Stacked PR 提示 ──────────────────────────────────────────────────────────
   local stacked_note=""
-  [[ "$pr_base" != "main" ]] && stacked_note="
+  if [[ "$pr_base" != "main" ]]; then
+    stacked_note="
 > STACKED PR: base is \`${pr_base}\` (not main). Only review the incremental diff
 > vs the base branch. Do NOT flag issues that belong to the base branch.
 "
+  fi
 
   # ── 触发 Codex（context 已预注入，无需 agent 自行探索）────────────────────────
   info "触发 Codex review PR #${pr} (base: ${pr_base} ← ${pr_head})..."
@@ -117,8 +121,8 @@ Post findings to GitHub (network is available):
 Do NOT merge. HITL merge only." 2>&1 | tee "$tmp_out"
 
   # ── Session ID 记录 ──────────────────────────────────────────────────────────
-  local session_id
-  session_id=$(grep 'session id:' "$tmp_out" | awk '{print $NF}' | head -1)
+  local session_id=""
+  session_id=$(grep 'session id:' "$tmp_out" | awk '{print $NF}' | head -1) || true
   if [[ -n "$session_id" ]]; then
     echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  review    pr=${pr}  ${session_id}" >> "$session_log"
     ok "Session → .harness_sessions  (resume only if interrupted: codex resume ${session_id})"
@@ -148,7 +152,7 @@ cmd_implement() {
   local tmp_out session_log="${REPO_ROOT}/.harness_sessions"
   tmp_out=$(mktemp)
   local claude_cmd="claude -p"
-  [[ -n "$CLAUDE_APPROVAL" ]] && claude_cmd="claude $CLAUDE_APPROVAL -p"
+  if [[ -n "$CLAUDE_APPROVAL" ]]; then claude_cmd="claude $CLAUDE_APPROVAL -p"; fi
   $claude_cmd "
 Read agents/claude-code/SOUL.md.
 
@@ -162,11 +166,12 @@ Follow SOUL.md §SOP Phase 1 (Claim PR) then Phase 2 (Implementation) then Phase
 6. bash scripts/local/test.sh must pass before opening PR
 7. Set ${req}.md status=review and open PR (Draft until tests pass)
 " 2>&1 | tee "$tmp_out"
-  local session_id
-  session_id=$(grep -E 'session[- ]id[: ]+' "$tmp_out" | grep -oE '[0-9a-f-]{36}' | head -1)
-  [[ -n "$session_id" ]] && \
-    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  implement  ${req}  ${session_id}" >> "$session_log" && \
+  local session_id=""
+  session_id=$(grep -E 'session[- ]id[: ]+' "$tmp_out" | grep -oE '[0-9a-f-]{36}' | head -1) || true
+  if [[ -n "$session_id" ]]; then
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  implement  ${req}  ${session_id}" >> "$session_log"
     ok "Session → .harness_sessions"
+  fi
   rm -f "$tmp_out"
 }
 
@@ -209,9 +214,10 @@ IMPORTANT — follow this exact order (mutex first, then work):
 " 2>&1 | tee "$tmp_out"
   local session_id
   session_id=$(grep -E 'session[- ]id[: ]+' "$tmp_out" | grep -oE '[0-9a-f-]{36}' | head -1)
-  [[ -n "$session_id" ]] && \
-    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  tc-design  ${req}  ${session_id}" >> "$session_log" && \
+  if [[ -n "$session_id" ]]; then
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  tc-design  ${req}  ${session_id}" >> "$session_log"
     ok "Session → .harness_sessions"
+  fi
   rm -f "$tmp_out"
 }
 
@@ -236,7 +242,7 @@ cmd_bugfix() {
   local tmp_out session_log="${REPO_ROOT}/.harness_sessions"
   tmp_out=$(mktemp)
   local claude_cmd="claude -p"
-  [[ -n "$CLAUDE_APPROVAL" ]] && claude_cmd="claude $CLAUDE_APPROVAL -p"
+  if [[ -n "$CLAUDE_APPROVAL" ]]; then claude_cmd="claude $CLAUDE_APPROVAL -p"; fi
   $claude_cmd "
 Read agents/claude-code/SOUL.md and harness/bug-standard.md.
 
@@ -251,9 +257,10 @@ Your task: fix ${bug}.
 " 2>&1 | tee "$tmp_out"
   local session_id
   session_id=$(grep -E 'session[- ]id[: ]+' "$tmp_out" | grep -oE '[0-9a-f-]{36}' | head -1)
-  [[ -n "$session_id" ]] && \
-    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  bugfix     ${bug}  ${session_id}" >> "$session_log" && \
+  if [[ -n "$session_id" ]]; then
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  bugfix     ${bug}  ${session_id}" >> "$session_log"
     ok "Session → .harness_sessions"
+  fi
   rm -f "$tmp_out"
 }
 
