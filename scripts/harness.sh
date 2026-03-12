@@ -183,9 +183,14 @@ ${task_content}
       while IFS= read -r tc_id; do
         tc_id="${tc_id//[[:space:]]/}"
         [[ -z "$tc_id" ]] && continue
-        # Try PR head first, then local glob
+        # TC files are named TC-<N>-<desc>.md — resolve via directory listing at pr_head
         local tc_content=""
-        tc_content=$(_fetch_pr_file "tasks/test-cases/${tc_id}.md" 2>/dev/null)
+        local tc_filename=""
+        tc_filename=$(gh api "repos/{owner}/{repo}/contents/tasks/test-cases?ref=${pr_head}" \
+          --jq ".[] | select(.name | startswith(\"${tc_id}\")) | .name" 2>/dev/null | head -1) || true
+        if [[ -n "$tc_filename" ]]; then
+          tc_content=$(_fetch_pr_file "tasks/test-cases/${tc_filename}")
+        fi
         if [[ -z "$tc_content" ]]; then
           local tc_file=""
           tc_file=$(echo "${REPO_ROOT}/tasks/test-cases/${tc_id}"*.md(N) | awk '{print $1}')
@@ -358,17 +363,18 @@ IMPORTANT — follow this exact order (mutex first, then work):
 }
 
 cmd_bugfix() {
-  local bug="${1:-}" force=0 stacked_base=""
-  # parse flags: --force, --stacked <branch>
+  local bug="${1:-}" force=0 stacked_base="" bundle_branch=""
+  # parse flags: --force, --stacked <branch>, --bundle <branch>
   while [[ "${1:-}" == --* ]]; do
     case "$1" in
       --force)   force=1; shift ;;
       --stacked) stacked_base="${2:-}"; shift 2 ;;
+      --bundle)  bundle_branch="${2:-}"; shift 2 ;;
       *) die "未知 flag: $1" ;;
     esac
   done
   bug="${1:-}"
-  [[ -n "$bug" ]] || die "Usage: harness bugfix [--force] [--stacked <base-branch>] <BUG-xxx>\n  例：harness bugfix BUG-001\n      harness bugfix --stacked feat/REQ-001-xxx BUG-001"
+  [[ -n "$bug" ]] || die "Usage: harness bugfix [--force] [--stacked <base-branch>] [--bundle <req-branch>] <BUG-xxx>\n  例：harness bugfix BUG-001\n      harness bugfix --stacked feat/REQ-001-xxx BUG-001\n      harness bugfix --bundle  feat/REQ-001-xxx BUG-001"
   require claude "Install: https://claude.ai/code"
 
   local bug_file="${REPO_ROOT}/tasks/bugs/${bug}.md"
@@ -388,24 +394,48 @@ cmd_bugfix() {
 
   local conflicts=""
   if ! conflicts=$(check_related_req_conflict "$bug_file"); then
-    if [[ -n "$stacked_base" ]]; then
+    if [[ -n "$bundle_branch" ]]; then
+      info "Bundle 模式：将直接在 ${bundle_branch} 上修复，不开独立 PR"
+    elif [[ -n "$stacked_base" ]]; then
       info "Stacked PR 模式：fix PR base 将指向 ${stacked_base}"
     else
-      die "${bug} 的关联需求正在实现中：${conflicts}\n请选择：\n  1. 等 REQ 完成后再认领\n  2. 使用 Stacked PR：harness bugfix --stacked <REQ分支> ${bug}\n（见 bug-standard.md §6.1 及 agent-cli-playbook.md §Stacked PR）"
+      die "${bug} 的关联需求正在实现中：${conflicts}\n请选择：\n  1. Bundle（同一特性内的 Bug）：harness bugfix --bundle <REQ分支> ${bug}\n     → 直接提交到 feat/REQ-xxx 分支，合并进同一 PR\n  2. Stacked PR（紧急/必须先于依赖合并）：harness bugfix --stacked <REQ分支> ${bug}\n     → 独立 fix 分支，PR base 指向 REQ 分支\n  3. 等 REQ 完成后再认领（推荐用于低优先级 Bug）\n（见 agent-cli-playbook.md §PR 依赖链处理）"
     fi
   fi
 
-  # depends_on gate：--stacked 绕过（Stacked PR 本身就是处理依赖未完成时的路径）
-  if [[ -z "$stacked_base" ]]; then
+  # depends_on gate：--stacked / --bundle 绕过（依赖由目标分支提供）
+  if [[ -z "$stacked_base" && -z "$bundle_branch" ]]; then
     local pending_deps=""
     if ! pending_deps=$(check_depends "$bug_file"); then
       die "${bug} 有未完成的依赖：${pending_deps}\n依赖 status=done/closed 后方可认领（见 bug-standard.md §3.2 Serialize 策略）。\n若需立即修复，使用 Stacked PR：harness bugfix --stacked <依赖分支> ${bug}"
     fi
-  else
+  elif [[ -n "$stacked_base" ]]; then
     info "Stacked PR 模式：跳过 depends_on 检查（依赖由 base 分支 ${stacked_base} 提供）"
+  else
+    info "Bundle 模式：跳过 depends_on 检查（在 ${bundle_branch} 上直接修复）"
   fi
 
   info "触发 Claude Code 认领并修复 ${bug} ..."
+
+  # Bundle 模式：直接在 REQ 分支上修复，不需要单独的 Claim PR 或 fix 分支
+  if [[ -n "$bundle_branch" ]]; then
+    "${CLAUDE_CMD[@]}" "
+Read agents/claude-code/SOUL.md and harness/bug-standard.md.
+
+Your task: fix ${bug} as a BUNDLE into an existing REQ branch (no separate PR).
+
+BUNDLE MODE — work directly on branch \`${bundle_branch}\`:
+1. git checkout ${bundle_branch}
+2. Read tasks/bugs/${bug}.md fully — reproduction steps, related_req, related_tc
+3. Fix the bug on this branch (do NOT open a separate Claim PR or fix branch)
+4. Add regression test (required per bug-standard.md §7)
+5. In the same commit (or final commit): set status=fixed, fill 根因分析 and 修复方案 in tasks/bugs/${bug}.md
+   (per bug-standard.md §6.3: status=fixed transition must be inside the PR)
+6. bash scripts/local/test.sh must pass
+7. Push to ${bundle_branch} — the fix travels with the REQ PR, no separate PR needed
+"
+    return
+  fi
 
   # 根据是否 stacked 生成不同的 PR topology 指令
   local pr_topology_instruction=""

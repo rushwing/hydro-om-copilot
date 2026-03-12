@@ -214,6 +214,15 @@ Do NOT merge the PR — HITL merge only.
 # 手动触发实现（claude_code）
 ./scripts/harness.sh implement REQ-<N>
 
+# Bug 修复 — 标准流程（独立 fix PR）
+./scripts/harness.sh bugfix BUG-<N>
+
+# Bug 修复 — Bundle（同一特性内，合入已有 REQ PR）
+./scripts/harness.sh bugfix --bundle feat/REQ-<N>-xxx BUG-<N>
+
+# Bug 修复 — Stacked PR（紧急，需先于依赖 PR 合并）
+./scripts/harness.sh bugfix --stacked feat/REQ-<N>-xxx BUG-<N>
+
 # 修复 PR review comments（claude_code）
 ./scripts/harness.sh fix-review <PR号>
 ```
