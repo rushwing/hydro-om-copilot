@@ -160,8 +160,8 @@ A potential bug was observed: <description of observed behavior>.
 1. Determine if this is a genuine bug (vs design-as-intended)
 2. If confirmed: open a GitHub issue (default — see bug-standard.md §事实源边界):
    gh issue create \
-     --title '<severity>: <short title>' \
-     --body $'## 现象\n<description>\n\n## 预期行为\n<expected>\n\n## 复现步骤\n<steps>\n\n## Severity\n<P1/P2/P3 per bug-standard.md §4>'
+     --title '[<S1|S2|S3|S4>] <short title>' \
+     --body $'## 现象\n<description>\n\n## 预期行为\n<expected>\n\n## 复现步骤\n<steps>\n\n## Severity\n<S1/S2/S3/S4 per bug-standard.md §4>\n\n## Priority\n<P0/P1/P2/P3 per bug-standard.md §4>'
 3. Do NOT create tasks/bugs/ files unless explicitly asked to promote to the repair queue
 4. Do not claim the fix
 "

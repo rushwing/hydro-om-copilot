@@ -144,8 +144,8 @@ status: designed  # designed | implemented | passing | failing
 
 2. 默认路径 — 开 GitHub issue：
    gh issue create \
-     --title '<severity>: <简短标题>' \
-     --body '## 现象\n...\n## 预期行为\n...\n## 复现步骤\n...\n## Severity\n<P1/P2/P3>'
+     --title '[<S1|S2|S3|S4>] <简短标题>' \
+     --body '## 现象\n...\n## 预期行为\n...\n## 复现步骤\n...\n## Severity\n<S1/S2/S3/S4 per bug-standard.md §4>\n\n## Priority\n<P0/P1/P2/P3 per bug-standard.md §4>'
 
 3. 仅在以下情况才提升为 repo Bug 文件（tasks/bugs/BUG-xxx.md）：
    a) Bug 需要长期跟踪（跨多个会话、跨 Sprint）
