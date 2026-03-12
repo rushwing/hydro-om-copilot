@@ -4,6 +4,21 @@
 
 ---
 
+## Agent 入队引导
+
+> **新 Agent 首先读这里。**
+
+| 步骤 | 操作 |
+|---|---|
+| 1 | 读 `agents/{your-id}/SOUL.md` — 了解你的身份、能力范围和 SOP |
+| 2 | 读 `harness/harness-index.md` — 了解完整开发循环和当前流程状态 |
+| 3 | 读 `agents/{your-id}/MEMORY.md` — 继承项目历史与经验教训 |
+| 4 | 按 SOUL.md 中的 SOP 扫描 `tasks/` 找可认领任务 |
+
+Agent workspaces：`agents/claude-code/` · `agents/openai-codex/`
+
+---
+
 ## 技术栈
 
 | 层 | 技术 |
