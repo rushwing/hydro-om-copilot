@@ -8,7 +8,20 @@
 #   ./scripts/harness.sh bugfix <BUG-xxx>       # Claude Code 认领并修复 Bug
 #   ./scripts/harness.sh status                 # 打印当前可认领任务列表
 
+# Extend PATH with known tool locations — avoids sourcing ~/.zshrc
+# (sourcing brings in oh-my-zsh hooks that corrupt $() output)
+for _d in \
+  "/Applications/Codex.app/Contents/Resources" \
+  "$HOME/.local/bin" \
+  "$HOME/.npm-global/bin" \
+  "$HOME/.npm/bin" \
+  "/opt/homebrew/bin" \
+  "/usr/local/bin" \
+; do [[ -d "$_d" ]] && export PATH="$_d:$PATH"; done
+unset _d
+
 set -euo pipefail
+trap 'echo "\n[harness] 错误：脚本在第 $LINENO 行退出" >&2' ERR
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CLAUDE_APPROVAL="${CLAUDE_APPROVAL:-}"        # 留空则交互式
@@ -41,11 +54,11 @@ cmd_review() {
   info "预取 PR #${pr} 上下文..."
 
   local pr_title pr_base pr_head pr_body pr_diff
-  pr_title=$(gh pr view "$pr" --json title  --jq '.title')
+  pr_title=$(gh pr view "$pr" --json title       --jq '.title')           || die "无法获取 PR #${pr}，请确认 PR 存在且 gh 已登录"
   pr_base=$( gh pr view "$pr" --json baseRefName --jq '.baseRefName')
   pr_head=$( gh pr view "$pr" --json headRefName --jq '.headRefName')
-  pr_body=$( gh pr view "$pr" --json body   --jq '.body // ""')
-  pr_diff=$( gh pr diff "$pr" 2>/dev/null || echo "(diff unavailable — check out the branch manually)")
+  pr_body=$( gh pr view "$pr" --json body        --jq '.body // ""')
+  pr_diff=$( gh pr diff "$pr" 2>/dev/null || echo "(diff unavailable)")
 
   # ── 查找关联 REQ/BUG 并内联内容 ─────────────────────────────────────────────
   local task_id task_section=""
