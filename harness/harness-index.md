@@ -53,14 +53,16 @@ flowchart LR
 
 ## 规程文档索引
 
-| 规程 | 文件 | 版本 | 状态 |
-|---|---|---|---|
-| 需求管理 | [requirement-standard.md](requirement-standard.md) | v0.3 | ✅ active |
-| 测试规范 | [testing-standard.md](testing-standard.md) | v0.4 | ✅ active |
-| Bug 管理 | [bug-standard.md](bug-standard.md) | v0.2 | ✅ active |
-| 知识库入库 | [kb-ingestion-standard.md](kb-ingestion-standard.md) | v1.0 | ✅ active |
-| 代码审查 | [review-standard.md](review-standard.md) | v0.1 | 🔲 stub |
-| CI / 质量门禁 | [ci-standard.md](ci-standard.md) | v0.1 | 🔲 stub |
+> 状态说明：✅ active = 可执行、经过 review；🔲 stub = 已占位，规则尚未完整，按现有内容尽力执行。
+
+| 规程 | 文件 | 状态 |
+|---|---|---|
+| 需求管理 | [requirement-standard.md](requirement-standard.md) | ✅ active |
+| 测试规范 | [testing-standard.md](testing-standard.md) | ✅ active |
+| Bug 管理 | [bug-standard.md](bug-standard.md) | ✅ active |
+| 知识库入库 | [kb-ingestion-standard.md](kb-ingestion-standard.md) | ✅ active |
+| 代码审查 | [review-standard.md](review-standard.md) | 🔲 stub — 已知原则可参考，完整规则待补 |
+| CI / 质量门禁 | [ci-standard.md](ci-standard.md) | 🔲 stub — pre-commit 命令可用，GitHub Action 待接入 |
 
 ---
 

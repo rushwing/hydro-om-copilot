@@ -257,16 +257,21 @@ Agent 在认领需求前，必须依次确认：
 - [ ] `depends_on` 中所有项已 `done`
 - [ ] 任务范围与自身当前上下文不冲突
 
-### 8.3 认领规则（Branch-as-Lock）
+### 8.3 认领规则（PR-as-Claim）
 
 | 项目 | 内容 |
 |---|---|
-| 规则 | 认领必须通过创建工作分支 + 第一个 commit 原子完成，不得仅口头声明 |
-| 分支命名 | `feat/REQ-001-<short-description>`（branch 名即认领信号，全局可见）|
-| 第一个 commit | 只改 `tasks/features/REQ-xxx.md`：`owner` → 自身标识，`status` → `in_progress` |
-| 竞态解决 | 若两个 Agent 同时创建同名分支，后 push 的一方会因 non-fast-forward 失败，应选其他 `test_designed` 项重试 |
-| 好示例 | 分支 `feat/REQ-001-sse-error-handling`，首 commit message `claim: REQ-001` |
-| 坏示例 | Agent 开始写代码，但未创建分支也未更新需求状态 |
+| 规则 | 认领必须通过创建工作分支 + 第一个 commit + **立即开 Draft PR** 完成，不得仅口头声明 |
+| 分支命名 | `feat/REQ-001-<short-description>` |
+| 第一个 commit | 只改 `tasks/features/REQ-xxx.md`：`owner` → 自身标识，`status` → `in_progress`；commit message：`claim: REQ-001` |
+| Draft PR | 认领 commit push 后立即开 Draft PR，PR 标题包含 `REQ-xxx`——这是全局可见的认领信号 |
+| 竞态处理 | Agent 认领前先用 `gh pr list --search "REQ-xxx"` 检查是否已有 PR；若已有则跳过该任务 |
+| 好示例 | 分支已推送 + Draft PR 已开，任何人/Agent 均可见该任务已被认领 |
+| 坏示例 | 仅创建本地分支未推送，或推送了分支但未开 PR——其他 Agent 无法感知 |
+
+> **局限性说明**：纯分支名锁不是原子锁——两个 Agent 可用不同分支名认领同一任务。
+> PR-as-Claim 通过 GitHub PR 列表作为共享可见状态解决此问题。
+> 在当前 HITL 模式下（所有 PR 需人工 review），双认领最终会在 review 阶段被发现和解决。
 
 ### 8.4 放弃与释放
 
@@ -277,15 +282,21 @@ Agent 在认领需求前，必须依次确认：
 - 在 `Agent Notes` 中简述原因
 - 删除或关闭对应工作分支
 
-### 8.5 简单分工建议
+### 8.5 分工规则
 
-> 这是默认建议，不是硬性路由器；若需求本身另有指定，以需求项为准。
+> 以 Agent 各自 SOUL.md 的 Task Scope 定义为准，本表是摘要。
 
-| 范围 | 默认优先 Agent |
-|---|---|
-| 后端逻辑 / API / 队列 / 状态机 | `openai_codex` |
-| 前端页面 / 交互 / 组件流转 | `claude_code` |
-| 测试 / 文档 / 跨端收尾 | 任一可认领，按当前负载决定 |
+| scope 字段 | 主责 Agent | 依据 |
+|---|---|---|
+| `frontend` | `claude_code` | SOUL.md：前端实现为主要能力 |
+| `backend` | `claude_code` | SOUL.md：后端特性开发为主要能力 |
+| `fullstack` | `claude_code` | SOUL.md：跨端实现 |
+| `tests` | `claude_code` 或 `openai_codex` | TC 设计由 openai_codex 主导；测试代码实现由 claude_code |
+| `docs` | `openai_codex` | SOUL.md：文档/一致性审查为主要能力 |
+
+> `openai_codex` **不认领** `scope: backend/frontend/fullstack` 的实现任务——
+> 其职责是 TC 设计、代码审查、Bug 上报，不是生产代码实现。
+> 详见 `agents/openai-codex/SOUL.md`。
 
 ---
 
@@ -397,3 +408,4 @@ blocked: [原因描述，例如"等待 PM 确认 API 字段设计" 或 "REQ-005 
 | 0.1 | 2026-03-12 | 初始版本；定义需求目录、状态机、优先级和 Claude Code / OpenAI Codex 双 Agent 认领规则 |
 | 0.2 | 2026-03-12 | 新增 `test_designed` 状态，强制测试先行；引入 `test_case_ref` 字段；删除 `blocked_by`，统一使用 `depends_on`；目录重设计（features/bugs/test-cases/archive/done+cancelled）；认领机制改为 Branch-as-Lock；更新同步规则与审查清单 |
 | 0.3 | 2026-03-12 | 根目录由 `requirements/` 重命名为 `tasks/`：Bug 在语义上是工作项而非规格说明，`tasks/` 对 Agent 更自然；子目录结构不变 |
+| 0.4 | 2026-03-12 | Branch-as-Lock 升级为 PR-as-Claim（Draft PR 作为全局可见认领信号，需先查 `gh pr list --search REQ-xxx`）；修正 §8.5 分工表（openai_codex 不认领实现任务，与 SOUL.md 对齐） |
