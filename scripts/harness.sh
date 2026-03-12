@@ -297,6 +297,7 @@ cmd_implement() {
   [[ "$req" == "--force" ]] && { force=1; req="${2:-}"; }
   [[ -n "$req" ]] || die "Usage: harness implement [--force] <REQ-xxx>\n  例：harness implement REQ-001"
   require claude "Install: https://claude.ai/code"
+  require gh    "Install: https://cli.github.com"
   warn_auto_merge
 
   local req_file="${REPO_ROOT}/tasks/features/${req}.md"
@@ -340,6 +341,7 @@ cmd_tc_design() {
   [[ "$req" == "--force" ]] && { force=1; req="${2:-}"; }
   [[ -n "$req" ]] || die "Usage: harness tc-design [--force] <REQ-xxx>\n  例：harness tc-design REQ-001"
   require codex "Install: npm install -g @openai/codex"
+  require gh    "Install: https://cli.github.com"
   warn_auto_merge
 
   local req_file="${REPO_ROOT}/tasks/features/${req}.md"
@@ -413,6 +415,7 @@ cmd_bugfix() {
   bug="${1:-}"
   [[ -n "$bug" ]] || die "Usage: harness bugfix [--force] [--stacked <base-branch>] [--bundle <req-branch>] <BUG-xxx>\n  例：harness bugfix BUG-001\n      harness bugfix --stacked feat/REQ-001-xxx BUG-001\n      harness bugfix --bundle  feat/REQ-001-xxx BUG-001"
   require claude "Install: https://claude.ai/code"
+  require gh    "Install: https://cli.github.com"
   # Bundle 不使用 Claim PR mutex，无需检查 auto-merge
   [[ -z "$bundle_branch" ]] && warn_auto_merge
 
@@ -547,14 +550,16 @@ cmd_fix_review() {
   pr_base=$(gh pr view  "$pr" --json baseRefName -q '.baseRefName')
 
   # 拉取 review 顶层 comments — 失败时 die，不静默跳过
-  # 每个 reviewer 只保留最新一条 review：若其最新 review 为 APPROVED，则其之前的
-  # COMMENTED/CHANGES_REQUESTED 已被覆盖，不再注入（避免重放已处理的历史 findings）
+  # 若某 reviewer 最新 review 为 APPROVED，表示其所有 findings 已被接受，整组丢弃；
+  # 否则（COMMENTED / CHANGES_REQUESTED）保留该 reviewer 的全部历史 reviews，
+  # 避免后续 COMMENTED 把先前 CHANGES_REQUESTED 的 findings 静默覆盖。
   local review_comments=""
   review_comments=$(gh api --paginate "repos/{owner}/{repo}/pulls/${pr}/reviews" \
     --jq '[.[] | select(.body | length > 0)]
            | group_by(.user.login)
-           | map(last | select((.state=="COMMENTED" or .state=="CHANGES_REQUESTED") and (.body | length > 0)))
+           | map(if last.state == "APPROVED" then [] else . end)
            | flatten
+           | map(select((.state=="COMMENTED" or .state=="CHANGES_REQUESTED") and (.body | length > 0)))
            | map({id: .id, author: .user.login, state: .state, body: .body})') \
     || die "无法获取 PR #${pr} review comments（gh API 失败）"
 
