@@ -479,6 +479,31 @@ cmd_bugfix() {
   [[ -n "$bundle_branch" ]] && branch_req=$(echo "$bundle_branch" | grep -oE '(REQ|BUG)-[0-9]+' | head -1) || true
   [[ -n "$stacked_base"  ]] && branch_req=$(echo "$stacked_base"  | grep -oE '(REQ|BUG)-[0-9]+' | head -1) || true
 
+  # ── Bundle 所有权验证（fail closed）──────────────────────────────────────────
+  # Bundle 模式跳过 Claim PR mutex，只有在 REQ 分支已被 Agent 持有时才安全。
+  # 验证：REQ 文件 status=in_progress 且 owner≠unassigned，且分支在 origin 上存在。
+  if [[ -n "$bundle_branch" ]]; then
+    if [[ -z "$branch_req" ]]; then
+      die "--bundle 分支名 '${bundle_branch}' 无法解析出 REQ-xxx 编号，无法验证所有权\n请确认分支命名格式为 feat/REQ-xxx-... 并重试"
+    fi
+    local _req_file_b="${REPO_ROOT}/tasks/features/${branch_req}.md"
+    [[ -f "$_req_file_b" ]] \
+      || die "--bundle 目标 ${branch_req}.md 不存在，无法验证所有权\n如需 Bundle 模式，该 REQ 必须先在 tasks/features/ 中完成 Claim PR"
+    local _req_status_b _req_owner_b
+    _req_status_b=$(grep '^status:' "$_req_file_b" | awk '{print $2}' | tr -d '"')
+    _req_owner_b=$( grep '^owner:'  "$_req_file_b" | awk '{print $2}' | tr -d '"')
+    if [[ "$_req_status_b" != "in_progress" ]]; then
+      die "--bundle 目标 ${branch_req} status=${_req_status_b}（期望 in_progress）\nBundle 模式仅适用于同一 Agent 正在实现中的 REQ 分支\n请改用 Stacked PR 或在 REQ 完成后单独修复"
+    fi
+    if [[ "$_req_owner_b" == "unassigned" ]]; then
+      die "--bundle 目标 ${branch_req} owner=unassigned（期望 agent 标识）\nBundle 模式仅适用于已被 Agent 认领的 REQ 分支\n请先通过 Claim PR mutex 认领该 REQ，再使用 --bundle"
+    fi
+    if ! git ls-remote --exit-code origin "$bundle_branch" > /dev/null 2>&1; then
+      die "--bundle 分支 '${bundle_branch}' 在 origin 上不存在\n请确认分支名称正确，或先 push 该分支到 origin"
+    fi
+    info "Bundle 所有权验证通过：${branch_req} status=${_req_status_b}, owner=${_req_owner_b}"
+  fi
+
   local conflicts=""
   if ! conflicts=$(check_related_req_conflict "$bug_file" "$branch_req"); then
     # Remaining conflicts after exact-id bypass — branch doesn't cover all in-progress REQs
