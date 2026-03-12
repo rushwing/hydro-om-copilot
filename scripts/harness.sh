@@ -96,7 +96,7 @@ $(cat "$task_file")
   local tmp_out session_log="${REPO_ROOT}/.harness_sessions"
   tmp_out=$(mktemp)
 
-  $CODEX_REVIEW "Read agents/openai-codex/SOUL.md and harness/review-standard.md.
+  "${CODEX_REVIEW[@]}" "Read agents/openai-codex/SOUL.md and harness/review-standard.md.
 
 ## Pre-fetched context for PR #${pr} — use directly, do NOT re-fetch
 
@@ -152,9 +152,9 @@ cmd_implement() {
   info "触发 Claude Code 认领并实现 ${req} ..."
   local tmp_out session_log="${REPO_ROOT}/.harness_sessions"
   tmp_out=$(mktemp)
-  local claude_cmd="claude -p"
-  if [[ -n "$CLAUDE_APPROVAL" ]]; then claude_cmd="claude $CLAUDE_APPROVAL -p"; fi
-  $claude_cmd "
+  local claude_cmd=(claude -p)
+  if [[ -n "$CLAUDE_APPROVAL" ]]; then claude_cmd=(claude "$CLAUDE_APPROVAL" -p); fi
+  "${claude_cmd[@]}" "
 Read agents/claude-code/SOUL.md.
 
 Your task: implement ${req}.
@@ -196,7 +196,7 @@ cmd_tc_design() {
   info "触发 Codex TC 设计 ${req} ..."
   local tmp_out session_log="${REPO_ROOT}/.harness_sessions"
   tmp_out=$(mktemp)
-  $CODEX_EXEC "
+  "${CODEX_EXEC[@]}" "
 Read agents/openai-codex/SOUL.md, harness/testing-standard.md, harness/requirement-standard.md.
 
 Your task: design acceptance test cases for ${req}.
@@ -242,9 +242,9 @@ cmd_bugfix() {
   info "触发 Claude Code 认领并修复 ${bug} ..."
   local tmp_out session_log="${REPO_ROOT}/.harness_sessions"
   tmp_out=$(mktemp)
-  local claude_cmd="claude -p"
-  if [[ -n "$CLAUDE_APPROVAL" ]]; then claude_cmd="claude $CLAUDE_APPROVAL -p"; fi
-  $claude_cmd "
+  local claude_cmd=(claude -p)
+  if [[ -n "$CLAUDE_APPROVAL" ]]; then claude_cmd=(claude "$CLAUDE_APPROVAL" -p); fi
+  "${claude_cmd[@]}" "
 Read agents/claude-code/SOUL.md and harness/bug-standard.md.
 
 Your task: fix ${bug}.
