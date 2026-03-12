@@ -49,12 +49,14 @@ require() {
 }
 
 # ── 依赖检查 ──────────────────────────────────────────────────────────────────
-# check_depends <file>
+# check_depends <file> [bypass_dep]
 # 读取 frontmatter 里的 depends_on，逐项查对应文件的 status。
+# bypass_dep（可选）：指定一个 REQ/BUG id，该依赖视为已满足（用于 --stacked/--bundle 精准绕过）。
 # 若所有依赖均为 done（或文件不存在/已归档），返回 0（可认领）。
 # 若有未完成依赖，prints "DEP(status) ..." 到 stdout 并返回 1。
 check_depends() {
   local file="$1"
+  local bypass_dep="${2:-}"
   local dep_raw=""
   dep_raw=$(grep '^depends_on:' "$file" 2>/dev/null | sed 's/^depends_on: *//' | tr -d '[]"') || true
   [[ -z "${dep_raw// /}" ]] && return 0   # 空字段，无依赖
@@ -64,6 +66,8 @@ check_depends() {
   while IFS= read -r dep; do
     dep="${dep//[[:space:]]/}"
     [[ -z "$dep" ]] && continue
+    # Bypass only the specific dep provided by --stacked/--bundle, not all deps
+    [[ -n "$bypass_dep" && "$dep" == "$bypass_dep" ]] && continue
     local dep_file=""
     if [[ "$dep" == REQ-* ]]; then
       dep_file="${REPO_ROOT}/tasks/features/${dep}.md"
@@ -165,12 +169,6 @@ cmd_review() {
       task_content=$(_fetch_pr_file "$task_rel_path")
     fi
 
-    # Fallback to local checkout if API returned nothing (file not in PR head)
-    if [[ -z "$task_content" && -n "$task_rel_path" && -f "${REPO_ROOT}/${task_rel_path}" ]]; then
-      task_content=$(cat "${REPO_ROOT}/${task_rel_path}")
-      warn "${task_id} 在 PR head 未找到，使用本地版本（可能非最新）"
-    fi
-
     if [[ -n "$task_content" ]]; then
       task_section="### Associated task: ${task_id}
 ${task_content}
@@ -191,21 +189,29 @@ ${task_content}
         if [[ -n "$tc_filename" ]]; then
           tc_content=$(_fetch_pr_file "tasks/test-cases/${tc_filename}")
         fi
-        if [[ -z "$tc_content" ]]; then
-          local tc_file=""
-          tc_file=$(echo "${REPO_ROOT}/tasks/test-cases/${tc_id}"*.md(N) | awk '{print $1}')
-          [[ -f "${tc_file:-}" ]] && tc_content=$(cat "$tc_file")
-        fi
         if [[ -n "$tc_content" ]]; then
           task_section="${task_section}
 ### TC: ${tc_id}
 ${tc_content}
 "
           info "已内联 TC ${tc_id}"
+        else
+          # Fail closed: do not substitute local files — inject a warning so Codex knows context is missing
+          task_section="${task_section}
+### TC: ${tc_id}
+⚠ WARNING: TC file not found at PR head ref \`${pr_head}\`. Cannot verify test coverage for ${tc_id}.
+"
+          warn "TC ${tc_id} 在 PR head 未找到，已注入缺失警告（不使用本地版本）"
         fi
       done < <(echo "$tc_refs" | tr ',\n' '\n')
+    elif [[ -n "$task_rel_path" ]]; then
+      # Fail closed: do not substitute local files
+      task_section="### Associated task: ${task_id}
+⚠ WARNING: ${task_id} not found at PR head ref \`${pr_head}\`. Cannot verify acceptance criteria.
+"
+      warn "${task_id} 在 PR head 未找到，已注入缺失警告（不使用本地版本）"
     else
-      warn "${task_id} 在 PR 描述中提及，但 tasks/ 中未找到对应文件"
+      warn "${task_id} 在 PR 描述中提及，但无法解析为已知 tasks/ 路径"
     fi
   fi
 
@@ -403,16 +409,22 @@ cmd_bugfix() {
     fi
   fi
 
-  # depends_on gate：--stacked / --bundle 绕过（依赖由目标分支提供）
-  if [[ -z "$stacked_base" && -z "$bundle_branch" ]]; then
-    local pending_deps=""
-    if ! pending_deps=$(check_depends "$bug_file"); then
-      die "${bug} 有未完成的依赖：${pending_deps}\n依赖 status=done/closed 后方可认领（见 bug-standard.md §3.2 Serialize 策略）。\n若需立即修复，使用 Stacked PR：harness bugfix --stacked <依赖分支> ${bug}"
-    fi
-  elif [[ -n "$stacked_base" ]]; then
-    info "Stacked PR 模式：跳过 depends_on 检查（依赖由 base 分支 ${stacked_base} 提供）"
-  else
-    info "Bundle 模式：跳过 depends_on 检查（在 ${bundle_branch} 上直接修复）"
+  # depends_on gate：仅精准绕过 --stacked/--bundle 提供的那一个依赖，其余依赖仍须满足
+  local bypass_dep=""
+  if [[ -n "$stacked_base" ]]; then
+    bypass_dep=$(echo "$stacked_base" | grep -oE '(REQ|BUG)-[0-9]+' | head -1) || true
+    [[ -n "$bypass_dep" ]] \
+      && info "Stacked PR 模式：depends_on 中 ${bypass_dep} 视为已满足（由 base 分支 ${stacked_base} 提供）" \
+      || warn "无法从分支名 ${stacked_base} 解析 dep id，depends_on 全量检查"
+  elif [[ -n "$bundle_branch" ]]; then
+    bypass_dep=$(echo "$bundle_branch" | grep -oE '(REQ|BUG)-[0-9]+' | head -1) || true
+    [[ -n "$bypass_dep" ]] \
+      && info "Bundle 模式：depends_on 中 ${bypass_dep} 视为已满足（在 ${bundle_branch} 上直接修复）" \
+      || warn "无法从分支名 ${bundle_branch} 解析 dep id，depends_on 全量检查"
+  fi
+  local pending_deps=""
+  if ! pending_deps=$(check_depends "$bug_file" "$bypass_dep"); then
+    die "${bug} 有未完成的依赖：${pending_deps}\n依赖 status=done/closed 后方可认领（见 bug-standard.md §3.2 Serialize 策略）。\n若需立即修复，使用 Stacked PR：harness bugfix --stacked <依赖分支> ${bug}"
   fi
 
   info "触发 Claude Code 认领并修复 ${bug} ..."
