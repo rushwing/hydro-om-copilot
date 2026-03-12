@@ -208,8 +208,29 @@ open → confirmed → in_progress → fixed → regressing → closed
 | 项目 | 内容 |
 |---|---|
 | 分支命名 | `fix/BUG-001-<short-description>` |
-| 基于 | `main`（或 Stacked PR 场景下的依赖分支） |
+| 基于 | `main`（标准）；Stacked PR 时见下方例外 |
 | 竞态保证 | Claim PR 已合并 = 锁已获取，直接开发，无需再次修改 BUG-xxx.md 的 owner/status |
+
+**例外一：Bundle（同一特性内的 Bug）**
+
+当 Bug 属于正在实现的同一特性、且修复应合入已有的 `feat/REQ-xxx` PR 时，**不使用 Claim PR mutex**，改为：
+
+1. `git checkout feat/REQ-xxx-...`
+2. 第一个 commit 只改 `tasks/bugs/BUG-xxx.md`：`owner` → 自身标识，`status` → `in_progress`，commit message `claim: BUG-001`
+3. 继续在同一分支上实现修复，最终 commit 将 status 改为 `fixed`
+4. 修复随 REQ PR 一起 review 和合并，不开独立 PR
+
+> 竞态说明：REQ 分支已被 REQ 的认领 Agent 持有，同一时间不会有其他 Agent 操作该分支，无需额外 mutex。
+
+**例外二：Stacked PR（fix 分支基于依赖分支）**
+
+Stacked PR 的 fix 分支从 `<stacked_base>` 切出，但 Claim PR 合并到 `main`，导致 fix 分支上的 `BUG-xxx.md` 缺少 `in_progress` 提交。为保证状态连续性：
+
+1. 按标准流程完成 Claim PR（合并到 `main`）
+2. 记录 claim commit SHA：`claim_sha=$(git rev-parse main)`
+3. `git checkout <stacked_base> && git cherry-pick ${claim_sha}`（将 in_progress 状态同步到依赖分支）
+4. 在 `<stacked_base>` 上创建 `fix/BUG-001-<desc>` 分支并开发修复
+5. fix PR 的最终 commit 将 status 改为 `fixed`（从 `in_progress` 推进，历史连续）
 
 ### 6.3 修复完成要求
 
@@ -296,3 +317,4 @@ PR 必须同时包含：
 | 0.1 | 2026-03-12 | 初始版本；定义 Bug 状态机、严重等级、Agent 认领规程、回归测试要求与关闭口径 |
 | 0.2 | 2026-03-12 | 目录路径由 `requirements/` 更新为 `tasks/` |
 | 0.3 | 2026-03-13 | §6.2 认领规则改为 Claim PR mutex 两阶段流程，与 requirement-standard 和 agent-cli-playbook 模板 C 保持一致 |
+| 0.4 | 2026-03-13 | §6.2 补充 Bundle 例外（claim commit 提交到 REQ 分支，无 Claim PR）和 Stacked PR 例外（cherry-pick claim commit 到依赖分支保证状态连续性）|

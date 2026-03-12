@@ -417,22 +417,25 @@ cmd_bugfix() {
 
   info "触发 Claude Code 认领并修复 ${bug} ..."
 
-  # Bundle 模式：直接在 REQ 分支上修复，不需要单独的 Claim PR 或 fix 分支
+  # Bundle 模式：直接在 REQ 分支上修复，不使用 Claim PR（REQ 分支已被持有，无需额外 mutex）
   if [[ -n "$bundle_branch" ]]; then
     "${CLAUDE_CMD[@]}" "
 Read agents/claude-code/SOUL.md and harness/bug-standard.md.
 
 Your task: fix ${bug} as a BUNDLE into an existing REQ branch (no separate PR).
 
-BUNDLE MODE — work directly on branch \`${bundle_branch}\`:
+BUNDLE MODE — no separate Claim PR (the REQ branch is already locked; see bug-standard.md §6.2 Bundle exception):
 1. git checkout ${bundle_branch}
-2. Read tasks/bugs/${bug}.md fully — reproduction steps, related_req, related_tc
-3. Fix the bug on this branch (do NOT open a separate Claim PR or fix branch)
-4. Add regression test (required per bug-standard.md §7)
-5. In the same commit (or final commit): set status=fixed, fill 根因分析 and 修复方案 in tasks/bugs/${bug}.md
+2. CLAIM COMMIT FIRST: in tasks/bugs/${bug}.md set owner=claude_code, status=in_progress
+   commit message: 'claim: ${bug}'
+   (This replaces the Claim PR mutex for Bundle mode — commit travels with the REQ PR)
+3. Read tasks/bugs/${bug}.md fully — reproduction steps, related_req, related_tc
+4. Fix the bug on this branch (do NOT open a separate fix branch or PR)
+5. Add regression test (required per bug-standard.md §7)
+6. Final commit: set status=fixed, fill 根因分析 and 修复方案 in tasks/bugs/${bug}.md
    (per bug-standard.md §6.3: status=fixed transition must be inside the PR)
-6. bash scripts/local/test.sh must pass
-7. Push to ${bundle_branch} — the fix travels with the REQ PR, no separate PR needed
+7. bash scripts/local/test.sh must pass
+8. Push to ${bundle_branch} — the fix travels with the REQ PR, no separate PR needed
 "
     return
   fi
@@ -441,8 +444,14 @@ BUNDLE MODE — work directly on branch \`${bundle_branch}\`:
   local pr_topology_instruction=""
   if [[ -n "$stacked_base" ]]; then
     pr_topology_instruction="STACKED PR MODE: base branch is \`${stacked_base}\` (not main).
-2. Only after claim merges: create branch fix/${bug}-<short-desc> from ${stacked_base}
-   (git checkout ${stacked_base} && git checkout -b fix/${bug}-<short-desc>)
+   See bug-standard.md §6.2 Stacked PR exception for the state-continuity requirement.
+2. Only after claim merges to main:
+   a. Record the claim commit SHA: claim_sha=\$(git rev-parse main)
+   b. Cherry-pick it onto the dependency branch to sync in_progress state:
+      git checkout ${stacked_base} && git cherry-pick \${claim_sha}
+      git push origin ${stacked_base}
+   c. Create the fix branch from the updated dependency branch:
+      git checkout -b fix/${bug}-<short-desc>
 8. Open PR with --base ${stacked_base}:
    gh pr create --base ${stacked_base} --title 'fix: ${bug} ...' --body 'depends on #<REQ-PR>'
    (When ${stacked_base} merges to main, GitHub auto-retargets this PR to main if branch is deleted)"
