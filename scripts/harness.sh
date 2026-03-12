@@ -4,9 +4,9 @@
 # 用法:
 #   ./scripts/harness.sh review <PR号>          # Codex review 指定 PR
 #   ./scripts/harness.sh fix-review <PR号>      # Claude Code 修复 PR 的 review comments
-#   ./scripts/harness.sh implement <REQ-xxx>    # Claude Code 认领并实现需求
-#   ./scripts/harness.sh tc-design <REQ-xxx>    # Codex 设计验收测试用例
-#   ./scripts/harness.sh bugfix <BUG-xxx>       # Claude Code 认领并修复 Bug
+#   ./scripts/harness.sh implement [--force] <REQ-xxx>               # Claude Code 认领并实现需求
+#   ./scripts/harness.sh tc-design [--force] <REQ-xxx>               # Codex 设计验收测试用例
+#   ./scripts/harness.sh bugfix [--force] [--stacked <branch>] <BUG-xxx>  # Claude Code 认领并修复 Bug
 #   ./scripts/harness.sh status                 # 打印当前可认领任务列表
 
 # Extend PATH with known tool locations — avoids sourcing ~/.zshrc
@@ -233,20 +233,23 @@ Do NOT merge. HITL merge only." 2>&1 | tee "$tmp_out"
 }
 
 cmd_implement() {
-  local req="${1:-}"
-  [[ -n "$req" ]] || die "Usage: harness implement <REQ-xxx>\n  例：harness implement REQ-001"
+  local req="${1:-}" force=0
+  [[ "$req" == "--force" ]] && { force=1; req="${2:-}"; }
+  [[ -n "$req" ]] || die "Usage: harness implement [--force] <REQ-xxx>\n  例：harness implement REQ-001"
   require claude "Install: https://claude.ai/code"
 
   local req_file="${REPO_ROOT}/tasks/features/${req}.md"
   [[ -f "$req_file" ]] || die "${req_file} 不存在"
 
-  # 检查状态
   local status owner
   status=$(grep '^status:' "$req_file" | awk '{print $2}' | tr -d '"')
   owner=$(grep '^owner:'  "$req_file" | awk '{print $2}' | tr -d '"')
 
-  [[ "$status" == "test_designed" ]] \
-    || warn "${req} status=${status}，期望 test_designed。确认后继续..."
+  if [[ "$status" != "test_designed" ]]; then
+    [[ $force -eq 1 ]] \
+      && warn "${req} status=${status}（非 test_designed），--force 覆盖，继续..." \
+      || die "${req} status=${status}，期望 test_designed。如需强制执行：harness implement --force ${req}"
+  fi
   [[ "$owner" == "unassigned" ]] \
     || die "${req} 已被 ${owner} 认领，无法重复认领"
 
@@ -272,8 +275,9 @@ Follow SOUL.md §SOP Phase 1 (Claim PR) then Phase 2 (Implementation) then Phase
 }
 
 cmd_tc_design() {
-  local req="${1:-}"
-  [[ -n "$req" ]] || die "Usage: harness tc-design <REQ-xxx>\n  例：harness tc-design REQ-001"
+  local req="${1:-}" force=0
+  [[ "$req" == "--force" ]] && { force=1; req="${2:-}"; }
+  [[ -n "$req" ]] || die "Usage: harness tc-design [--force] <REQ-xxx>\n  例：harness tc-design REQ-001"
   require codex "Install: npm install -g @openai/codex"
 
   local req_file="${REPO_ROOT}/tasks/features/${req}.md"
@@ -283,8 +287,11 @@ cmd_tc_design() {
   status=$(grep '^status:' "$req_file" | awk '{print $2}' | tr -d '"')
   owner=$(grep '^owner:'  "$req_file" | awk '{print $2}' | tr -d '"')
 
-  [[ "$status" == "ready" ]] \
-    || warn "${req} status=${status}，期望 ready。确认后继续..."
+  if [[ "$status" != "ready" ]]; then
+    [[ $force -eq 1 ]] \
+      && warn "${req} status=${status}（非 ready），--force 覆盖，继续..." \
+      || die "${req} status=${status}，期望 ready。如需强制执行：harness tc-design --force ${req}"
+  fi
   [[ "$owner" == "unassigned" ]] \
     || die "${req} 已被 ${owner} 认领"
 
@@ -330,8 +337,17 @@ IMPORTANT — follow this exact order (mutex first, then work):
 }
 
 cmd_bugfix() {
-  local bug="${1:-}"
-  [[ -n "$bug" ]] || die "Usage: harness bugfix <BUG-xxx>\n  例：harness bugfix BUG-001"
+  local bug="${1:-}" force=0 stacked_base=""
+  # parse flags: --force, --stacked <branch>
+  while [[ "${1:-}" == --* ]]; do
+    case "$1" in
+      --force)   force=1; shift ;;
+      --stacked) stacked_base="${2:-}"; shift 2 ;;
+      *) die "未知 flag: $1" ;;
+    esac
+  done
+  bug="${1:-}"
+  [[ -n "$bug" ]] || die "Usage: harness bugfix [--force] [--stacked <base-branch>] <BUG-xxx>\n  例：harness bugfix BUG-001\n      harness bugfix --stacked feat/REQ-001-xxx BUG-001"
   require claude "Install: https://claude.ai/code"
 
   local bug_file="${REPO_ROOT}/tasks/bugs/${bug}.md"
@@ -341,8 +357,11 @@ cmd_bugfix() {
   status=$(grep '^status:' "$bug_file" | awk '{print $2}' | tr -d '"')
   owner=$(grep '^owner:'  "$bug_file" | awk '{print $2}' | tr -d '"')
 
-  [[ "$status" == "confirmed" ]] \
-    || warn "${bug} status=${status}，期望 confirmed。确认后继续..."
+  if [[ "$status" != "confirmed" ]]; then
+    [[ $force -eq 1 ]] \
+      && warn "${bug} status=${status}（非 confirmed），--force 覆盖，继续..." \
+      || die "${bug} status=${status}，期望 confirmed。如需强制执行：harness bugfix --force ${bug}"
+  fi
   [[ "$owner" == "unassigned" ]] \
     || die "${bug} 已被 ${owner} 认领"
 
@@ -353,11 +372,29 @@ cmd_bugfix() {
 
   local conflicts=""
   if ! conflicts=$(check_related_req_conflict "$bug_file"); then
-    warn "${bug} 的关联需求正在实现中：${conflicts}\n若走 Stacked PR 流程（fix PR base 指向 REQ 分支），可继续；否则建议等 REQ 完成后再认领（见 bug-standard.md §6.1 及 agent-cli-playbook.md §Stacked PR）。"
+    if [[ -n "$stacked_base" ]]; then
+      info "Stacked PR 模式：fix PR base 将指向 ${stacked_base}"
+    else
+      die "${bug} 的关联需求正在实现中：${conflicts}\n请选择：\n  1. 等 REQ 完成后再认领\n  2. 使用 Stacked PR：harness bugfix --stacked <REQ分支> ${bug}\n（见 bug-standard.md §6.1 及 agent-cli-playbook.md §Stacked PR）"
+    fi
   fi
 
   info "触发 Claude Code 认领并修复 ${bug} ..."
-  info "触发 Claude Code 认领并修复 ${bug} ..."
+
+  # 根据是否 stacked 生成不同的 PR topology 指令
+  local pr_topology_instruction=""
+  if [[ -n "$stacked_base" ]]; then
+    pr_topology_instruction="STACKED PR MODE: base branch is \`${stacked_base}\` (not main).
+2. Only after claim merges: create branch fix/${bug}-<short-desc> from ${stacked_base}
+   (git checkout ${stacked_base} && git checkout -b fix/${bug}-<short-desc>)
+8. Open PR with --base ${stacked_base}:
+   gh pr create --base ${stacked_base} --title 'fix: ${bug} ...' --body 'depends on #<REQ-PR>'
+   (When ${stacked_base} merges to main, GitHub auto-retargets this PR to main if branch is deleted)"
+  else
+    pr_topology_instruction="2. Only after claim merges: create branch fix/${bug}-<short-desc>
+8. Open PR (base: main)"
+  fi
+
   "${CLAUDE_CMD[@]}" "
 Read agents/claude-code/SOUL.md and harness/bug-standard.md.
 
@@ -367,14 +404,13 @@ IMPORTANT — use Claim PR mutex first (same as REQ implementation):
 1. Claim PR FIRST: branch claim/${bug}, single-file commit (status=in_progress, owner=claude_code in tasks/bugs/${bug}.md only),
    push, open PR titled 'claim: ${bug}', enable auto-merge, wait for merge.
    If merge fails (conflict) → another agent claimed it, stop.
-2. Only after claim merges: create branch fix/${bug}-<short-desc>
+${pr_topology_instruction}
 3. Read tasks/bugs/${bug}.md fully — reproduction steps, related_req, related_tc
 4. Fix the bug
 5. Add regression test (required per bug-standard.md §7)
 6. In the same commit (or final commit before PR): set status=fixed, fill 根因分析 and 修复方案 in tasks/bugs/${bug}.md
    (per bug-standard.md §6.3: the PR itself must contain the status=fixed transition + RCA)
 7. bash scripts/local/test.sh must pass before opening PR
-8. Open PR
 "
 }
 
@@ -546,12 +582,12 @@ usage() {
 用法: harness <command> [args]
 
 Commands:
-  review <PR号>        触发 Codex review 指定 PR
-  fix-review <PR号>    触发 Claude Code 修复 PR 的 review comments
-  implement <REQ-xxx>  触发 Claude Code 认领并实现需求
-  tc-design <REQ-xxx>  触发 Codex 设计验收测试用例
-  bugfix <BUG-xxx>     触发 Claude Code 认领并修复 Bug
-  status               列出当前所有可认领任务
+  review <PR号>                              触发 Codex review 指定 PR
+  fix-review <PR号>                          触发 Claude Code 修复 PR 的 review comments
+  implement [--force] <REQ-xxx>              触发 Claude Code 认领并实现需求
+  tc-design [--force] <REQ-xxx>              触发 Codex 设计验收测试用例
+  bugfix [--force] [--stacked <branch>] <BUG-xxx>  触发 Claude Code 认领并修复 Bug
+  status                                     列出当前所有可认领任务
 
 环境变量:
   CLAUDE_APPROVAL  claude 的 approval flag（默认空，即交互式）
@@ -560,8 +596,10 @@ Commands:
   ./scripts/harness.sh review 18
   ./scripts/harness.sh fix-review 18
   ./scripts/harness.sh implement REQ-001
+  ./scripts/harness.sh implement --force REQ-001
   ./scripts/harness.sh tc-design REQ-002
   ./scripts/harness.sh bugfix BUG-001
+  ./scripts/harness.sh bugfix --stacked feat/REQ-001-xxx BUG-001
   ./scripts/harness.sh status
 EOF
 }
