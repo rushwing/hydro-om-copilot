@@ -322,10 +322,11 @@ cmd_fix_review() {
 
   info "触发 Claude Code 修复 PR #${pr} review findings..."
 
-  local claude_cmd=(claude -p)
+  # fix-review 是用户主动触发的自动修复，内置跳过权限确认
+  # （避免 claude -p 在脚本子进程里块缓冲导致权限提示不可见）
+  local claude_cmd=(claude --dangerously-skip-permissions -p)
   if [[ -n "$CLAUDE_APPROVAL" ]]; then claude_cmd=(claude "$CLAUDE_APPROVAL" -p); fi
 
-  # 不通过 tee 管道，让 claude 直接输出到终端（保留交互式权限确认）
   "${claude_cmd[@]}" "
 Read agents/claude-code/SOUL.md and harness/review-standard.md.
 
