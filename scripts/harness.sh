@@ -37,28 +37,80 @@ cmd_review() {
   require codex "Install: npm install -g @openai/codex"
   require gh    "Install: https://cli.github.com"
 
-  # 验证 PR 存在
-  gh pr view "$pr" --json number,title,state -q '"PR #\(.number): \(.title) [\(.state)]"' \
-    || die "PR #$pr 不存在或无权访问"
+  # ── 预取 PR 上下文（避免 agent 自己探索，节省推理 token）────────────────────
+  info "预取 PR #${pr} 上下文..."
 
-  info "触发 Codex review PR #${pr} ..."
-  # review 需要 gh 调 GitHub API，必须用 danger-full-access 解除网络限制
-  $CODEX_REVIEW "
-Read agents/openai-codex/SOUL.md, then harness/review-standard.md.
+  local pr_title pr_base pr_head pr_body pr_diff
+  pr_title=$(gh pr view "$pr" --json title  --jq '.title')
+  pr_base=$( gh pr view "$pr" --json baseRefName --jq '.baseRefName')
+  pr_head=$( gh pr view "$pr" --json headRefName --jq '.headRefName')
+  pr_body=$( gh pr view "$pr" --json body   --jq '.body // ""')
+  pr_diff=$( gh pr diff "$pr" 2>/dev/null || echo "(diff unavailable — check out the branch manually)")
 
-Your task: review PR #${pr}.
-1. gh pr view ${pr} --json number,title,body,baseRefName,headRefName
-2. gh pr diff ${pr}
-3. If base branch is not main, this is a Stacked PR — only review the incremental diff vs the base branch per review-standard.md §前置依赖检查
-4. Find associated REQ or BUG in tasks/ (PR title or body should mention it)
-5. If found, read that file — focus on Acceptance Criteria
-6. Check per review-standard.md: 契约一致性, 安全性, 测试质量, 代码可读性
-7. Post findings:
-   - Non-blocking: gh pr review ${pr} --comment -b '...'
-   - Blocking:     gh pr review ${pr} --request-changes -b '...'
-
-Do NOT merge. HITL merge only.
+  # ── 查找关联 REQ/BUG 并内联内容 ─────────────────────────────────────────────
+  local task_id task_section=""
+  task_id=$(echo "$pr_title $pr_body" | grep -oE '(REQ|BUG)-[0-9]+' | head -1)
+  if [[ -n "$task_id" ]]; then
+    local task_file=""
+    [[ "$task_id" == REQ-* && -f "${REPO_ROOT}/tasks/features/${task_id}.md" ]] \
+      && task_file="${REPO_ROOT}/tasks/features/${task_id}.md"
+    [[ "$task_id" == BUG-* && -f "${REPO_ROOT}/tasks/bugs/${task_id}.md" ]] \
+      && task_file="${REPO_ROOT}/tasks/bugs/${task_id}.md"
+    if [[ -n "$task_file" ]]; then
+      task_section="### Associated task: ${task_id}
+$(cat "$task_file")
 "
+      info "已内联 ${task_id} → $(basename "$task_file")"
+    else
+      warn "${task_id} 在 PR 描述中提及，但 tasks/ 中未找到对应文件"
+    fi
+  fi
+
+  # ── Stacked PR 提示 ──────────────────────────────────────────────────────────
+  local stacked_note=""
+  [[ "$pr_base" != "main" ]] && stacked_note="
+> STACKED PR: base is \`${pr_base}\` (not main). Only review the incremental diff
+> vs the base branch. Do NOT flag issues that belong to the base branch.
+"
+
+  # ── 触发 Codex（context 已预注入，无需 agent 自行探索）────────────────────────
+  info "触发 Codex review PR #${pr} (base: ${pr_base} ← ${pr_head})..."
+  local tmp_out session_log="${REPO_ROOT}/.harness_sessions"
+  tmp_out=$(mktemp)
+
+  $CODEX_REVIEW "Read agents/openai-codex/SOUL.md and harness/review-standard.md.
+
+## Pre-fetched context for PR #${pr} — use directly, do NOT re-fetch
+
+### Metadata
+- Title: ${pr_title}
+- Base → Head: ${pr_base} → ${pr_head}
+${stacked_note}
+### PR description
+${pr_body}
+
+${task_section}### Diff
+\`\`\`diff
+${pr_diff}
+\`\`\`
+
+## Your task
+Check per review-standard.md: 前置依赖检查, 契约一致性, 安全性, 测试质量, 代码可读性.
+${task_section:+Verify implementation against the Acceptance Criteria in the task file above.}
+Post findings to GitHub (network is available):
+  gh pr review ${pr} --comment -b '...'         # non-blocking
+  gh pr review ${pr} --request-changes -b '...' # blocking
+
+Do NOT merge. HITL merge only." 2>&1 | tee "$tmp_out"
+
+  # ── Session ID 记录 ──────────────────────────────────────────────────────────
+  local session_id
+  session_id=$(grep 'session id:' "$tmp_out" | awk '{print $NF}' | head -1)
+  if [[ -n "$session_id" ]]; then
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  review    pr=${pr}  ${session_id}" >> "$session_log"
+    ok "Session → .harness_sessions  (resume only if interrupted: codex resume ${session_id})"
+  fi
+  rm -f "$tmp_out"
 }
 
 cmd_implement() {
@@ -80,9 +132,11 @@ cmd_implement() {
     || die "${req} 已被 ${owner} 认领，无法重复认领"
 
   info "触发 Claude Code 认领并实现 ${req} ..."
-  local prompt
-  if [[ -n "$CLAUDE_APPROVAL" ]]; then
-    claude $CLAUDE_APPROVAL -p "
+  local tmp_out session_log="${REPO_ROOT}/.harness_sessions"
+  tmp_out=$(mktemp)
+  local claude_cmd="claude -p"
+  [[ -n "$CLAUDE_APPROVAL" ]] && claude_cmd="claude $CLAUDE_APPROVAL -p"
+  $claude_cmd "
 Read agents/claude-code/SOUL.md.
 
 Your task: implement ${req}.
@@ -94,22 +148,13 @@ Follow SOUL.md §SOP Phase 1 (Claim PR) then Phase 2 (Implementation) then Phase
 5. Write tests first, then implementation
 6. bash scripts/local/test.sh must pass before opening PR
 7. Set ${req}.md status=review and open PR (Draft until tests pass)
-"
-  else
-    claude -p "
-Read agents/claude-code/SOUL.md.
-
-Your task: implement ${req}.
-Follow SOUL.md §SOP Phase 1 (Claim PR) then Phase 2 (Implementation) then Phase 3 (PR).
-1. Claim PR: branch claim/${req}, single-file commit, auto-merge PR, verify merged
-2. Implementation branch: feat/${req}-<short-desc>
-3. Read tasks/features/${req}.md fully — Acceptance Criteria and In Scope
-4. Read all TC files in test_case_ref before writing any code
-5. Write tests first, then implementation
-6. bash scripts/local/test.sh must pass before opening PR
-7. Set ${req}.md status=review and open PR (Draft until tests pass)
-"
-  fi
+" 2>&1 | tee "$tmp_out"
+  local session_id
+  session_id=$(grep -E 'session[- ]id[: ]+' "$tmp_out" | grep -oE '[0-9a-f-]{36}' | head -1)
+  [[ -n "$session_id" ]] && \
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  implement  ${req}  ${session_id}" >> "$session_log" && \
+    ok "Session → .harness_sessions"
+  rm -f "$tmp_out"
 }
 
 cmd_tc_design() {
@@ -130,18 +175,31 @@ cmd_tc_design() {
     || die "${req} 已被 ${owner} 认领"
 
   info "触发 Codex TC 设计 ${req} ..."
+  local tmp_out session_log="${REPO_ROOT}/.harness_sessions"
+  tmp_out=$(mktemp)
   $CODEX_EXEC "
 Read agents/openai-codex/SOUL.md, harness/testing-standard.md, harness/requirement-standard.md.
 
 Your task: design acceptance test cases for ${req}.
-1. Read tasks/features/${req}.md fully
-2. Create tasks/test-cases/TC-${req#REQ-}-<desc>.md following testing-standard.md §TC 文档结构
+
+IMPORTANT — follow this exact order (mutex first, then work):
+1. Claim PR FIRST: branch claim/${req}-tc, single-file commit (owner→openai_codex only),
+   push, open PR titled 'claim: ${req}-tc', enable auto-merge, wait for merge.
+   If merge fails (conflict) → another agent claimed it, stop.
+2. Only after claim succeeds: create implementation branch test/${req}-tc-design
+3. Read tasks/features/${req}.md fully
+4. Create tasks/test-cases/TC-${req#REQ-}-<desc>.md per testing-standard.md §TC 文档结构
    - Cover happy path, edge cases, error cases from Acceptance Criteria
-   - Specify layer (L1 unit / L2 integration / L3 E2E) per testing-standard.md §分层策略
-3. After TC file is created:
-   - Update tasks/features/${req}.md: add TC to test_case_ref, status=test_designed, owner=unassigned
-   - Use Claim PR mutex (branch claim/${req}-tc) per requirement-standard.md §8.2 Mode A
-"
+   - Specify layer (L1 unit / L2 integration / L3 E2E)
+5. Update tasks/features/${req}.md: add TC to test_case_ref, status=test_designed, owner=unassigned
+6. Open PR for the TC design work (requires human review — do NOT auto-merge)
+" 2>&1 | tee "$tmp_out"
+  local session_id
+  session_id=$(grep -E 'session[- ]id[: ]+' "$tmp_out" | grep -oE '[0-9a-f-]{36}' | head -1)
+  [[ -n "$session_id" ]] && \
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  tc-design  ${req}  ${session_id}" >> "$session_log" && \
+    ok "Session → .harness_sessions"
+  rm -f "$tmp_out"
 }
 
 cmd_bugfix() {
@@ -162,7 +220,11 @@ cmd_bugfix() {
     || die "${bug} 已被 ${owner} 认领"
 
   info "触发 Claude Code 认领并修复 ${bug} ..."
-  local prompt="
+  local tmp_out session_log="${REPO_ROOT}/.harness_sessions"
+  tmp_out=$(mktemp)
+  local claude_cmd="claude -p"
+  [[ -n "$CLAUDE_APPROVAL" ]] && claude_cmd="claude $CLAUDE_APPROVAL -p"
+  $claude_cmd "
 Read agents/claude-code/SOUL.md and harness/bug-standard.md.
 
 Your task: fix ${bug}.
@@ -173,12 +235,13 @@ Your task: fix ${bug}.
 5. Add regression test (required per bug-standard.md §7)
 6. Fill in 根因分析 and 修复方案 in ${bug}.md, set status=fixed
 7. bash scripts/local/test.sh must pass before opening PR
-"
-  if [[ -n "$CLAUDE_APPROVAL" ]]; then
-    claude $CLAUDE_APPROVAL -p "$prompt"
-  else
-    claude -p "$prompt"
-  fi
+" 2>&1 | tee "$tmp_out"
+  local session_id
+  session_id=$(grep -E 'session[- ]id[: ]+' "$tmp_out" | grep -oE '[0-9a-f-]{36}' | head -1)
+  [[ -n "$session_id" ]] && \
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  bugfix     ${bug}  ${session_id}" >> "$session_log" && \
+    ok "Session → .harness_sessions"
+  rm -f "$tmp_out"
 }
 
 cmd_status() {
