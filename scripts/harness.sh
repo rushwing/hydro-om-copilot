@@ -62,7 +62,7 @@ cmd_review() {
 
   # ── 查找关联 REQ/BUG 并内联内容 ─────────────────────────────────────────────
   local task_id task_section=""
-  task_id=$(echo "$pr_title $pr_body" | grep -oE '(REQ|BUG)-[0-9]+' | head -1)
+  task_id=$(echo "$pr_title $pr_body" | grep -oE '(REQ|BUG)-[0-9]+' | head -1) || task_id=""
   if [[ -n "$task_id" ]]; then
     local task_file=""
     if [[ "$task_id" == REQ-* && -f "${REPO_ROOT}/tasks/features/${task_id}.md" ]]; then
@@ -167,7 +167,7 @@ Follow SOUL.md §SOP Phase 1 (Claim PR) then Phase 2 (Implementation) then Phase
 7. Set ${req}.md status=review and open PR (Draft until tests pass)
 " 2>&1 | tee "$tmp_out"
   local session_id=""
-  session_id=$(grep -E 'session[- ]id[: ]+' "$tmp_out" | grep -oE '[0-9a-f-]{36}' | head -1) || true
+  session_id=$(grep -E 'session[- ]id[: ]+' "$tmp_out" | grep -oE '[0-9a-f-]{36}' | head -1) || true || true
   if [[ -n "$session_id" ]]; then
     echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  implement  ${req}  ${session_id}" >> "$session_log"
     ok "Session → .harness_sessions"
@@ -213,7 +213,7 @@ IMPORTANT — follow this exact order (mutex first, then work):
 6. Open PR for the TC design work (requires human review — do NOT auto-merge)
 " 2>&1 | tee "$tmp_out"
   local session_id
-  session_id=$(grep -E 'session[- ]id[: ]+' "$tmp_out" | grep -oE '[0-9a-f-]{36}' | head -1)
+  session_id=$(grep -E 'session[- ]id[: ]+' "$tmp_out" | grep -oE '[0-9a-f-]{36}' | head -1) || true
   if [[ -n "$session_id" ]]; then
     echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  tc-design  ${req}  ${session_id}" >> "$session_log"
     ok "Session → .harness_sessions"
@@ -256,7 +256,7 @@ Your task: fix ${bug}.
 7. bash scripts/local/test.sh must pass before opening PR
 " 2>&1 | tee "$tmp_out"
   local session_id
-  session_id=$(grep -E 'session[- ]id[: ]+' "$tmp_out" | grep -oE '[0-9a-f-]{36}' | head -1)
+  session_id=$(grep -E 'session[- ]id[: ]+' "$tmp_out" | grep -oE '[0-9a-f-]{36}' | head -1) || true
   if [[ -n "$session_id" ]]; then
     echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  bugfix     ${bug}  ${session_id}" >> "$session_log"
     ok "Session → .harness_sessions"
