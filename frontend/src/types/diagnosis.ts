@@ -120,3 +120,17 @@ export interface AutoDiagnosisRecord {
   sources: string[];
   error: string | null;
 }
+
+export interface PendingArchiveItem {
+  id: string;
+  unit_id: string;
+  fault_types: string[];
+  risk_level: RiskLevel | null;
+  root_causes: RootCause[];
+  check_steps: CheckStep[];
+  report_draft: string | null;
+  triggered_at: string;
+  archived_at: string;
+  source: "auto_diagnosed" | "unprocessed_fault" | "manual_pending";
+  completed: boolean;
+}

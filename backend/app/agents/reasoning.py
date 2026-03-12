@@ -1,29 +1,13 @@
 """
 reasoning node — produces Top-3 root causes with evidence chains.
-Streams tokens back through state for SSE delivery.
 """
 
 import json
-
-from langchain_anthropic import ChatAnthropic
-from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.prompts import ChatPromptTemplate
+import traceback
 
 from app.agents.state import AgentState
-from app.config import settings
+from app.utils.anthropic_client import llm_json
 from app.utils.prompts import REASONING_PROMPT
-
-_llm = ChatAnthropic(
-    model=settings.llm_model,
-    temperature=settings.llm_temperature,
-    api_key=settings.anthropic_api_key,
-)
-
-_chain = (
-    ChatPromptTemplate.from_template(REASONING_PROMPT)
-    | _llm
-    | JsonOutputParser()
-)
 
 
 def _format_docs(docs: list[dict]) -> str:
@@ -34,23 +18,23 @@ def _format_docs(docs: list[dict]) -> str:
 
 async def reasoning_node(state: AgentState) -> dict:
     retrieved = state.get("retrieved") or {}
-    procedure_ctx = _format_docs(retrieved.get("procedure_docs", []))
-    rule_ctx = _format_docs(retrieved.get("rule_docs", []))
-    case_ctx = _format_docs(retrieved.get("case_docs", []))
+    prompt = REASONING_PROMPT.format(
+        query=state["raw_query"],
+        parsed_symptom=json.dumps(state.get("parsed_symptom") or {}, ensure_ascii=False),
+        topic=state.get("topic", ""),
+        procedure_context=_format_docs(retrieved.get("procedure_docs", [])),
+        rule_context=_format_docs(retrieved.get("rule_docs", [])),
+        case_context=_format_docs(retrieved.get("case_docs", [])),
+        ocr_text=state.get("ocr_text") or "",
+    )
 
+    session_id = state.get("session_id", "")
     try:
-        result = await _chain.ainvoke(
-            {
-                "query": state["raw_query"],
-                "parsed_symptom": json.dumps(state.get("parsed_symptom") or {}, ensure_ascii=False),
-                "topic": state.get("topic", ""),
-                "procedure_context": procedure_ctx,
-                "rule_context": rule_ctx,
-                "case_context": case_ctx,
-                "ocr_text": state.get("ocr_text") or "",
-            }
+        result = await llm_json(
+            prompt, max_tokens=4096, _session_id=session_id, _node="reasoning"
         )
     except Exception as exc:
+        print(f"[reasoning_node ERROR] {exc}\n{traceback.format_exc()}", flush=True)
         return {
             "root_causes": [],
             "risk_level": "medium",

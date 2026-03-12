@@ -49,6 +49,30 @@ const ALARM_COLORS: Record<string, string> = {
   trip: "text-red-400",
 };
 
+const PHASE_PROGRESS: Record<string, number> = {
+  sensor_reader: 16,
+  symptom_parser: 33,
+  image_agent: 50,
+  retrieval: 66,
+  reasoning: 83,
+  report_gen: 95,
+  done: 100,
+  error: 0,
+};
+
+function getProgressColor(pct: number): string {
+  if (pct <= 33) return "bg-red-500";
+  if (pct <= 50) return "bg-orange-500";
+  if (pct <= 66) return "bg-amber-500";
+  if (pct <= 83) return "bg-yellow-500";
+  return "bg-emerald-500";
+}
+
+function relativeTime(isoStr: string): string {
+  const elapsed = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
+  return `${elapsed}s 前`;
+}
+
 // ── Sub-components ───────────────────────────────────────────────────────────
 
 function SimulatedDataBanner() {
@@ -70,7 +94,7 @@ function EpochIndicator({ status }: { status: AutoDiagnosisStatus }) {
     <div className="rounded-lg border border-surface-border bg-surface-card p-4 space-y-3">
       <div className="flex items-center justify-between">
         <span className="font-display text-xs uppercase tracking-wider text-text-muted">
-          模拟周期
+          传感器采集周期（模拟）
         </span>
         <span className="font-mono text-xs text-text-secondary">
           EPOCH #{epoch_num} · {epoch_elapsed_s}/300s
@@ -113,9 +137,13 @@ function UnitCooldownGrid({ cooldowns }: { cooldowns: Record<string, number> }) 
   const units = ["#1机", "#2机", "#3机", "#4机"];
   return (
     <div className="rounded-lg border border-surface-border bg-surface-card p-4">
-      <h3 className="font-display text-xs uppercase tracking-wider text-text-muted mb-3">
-        机组冷却状态
+      <h3
+        className="font-display text-xs uppercase tracking-wider text-text-muted mb-1"
+        title="冷却期内同一机组不会重复触发诊断，避免报告刷屏。"
+      >
+        各机组诊断状态
       </h3>
+      <p className="text-xs text-text-muted mb-3">各机组共享同一采集周期</p>
       <div className="grid grid-cols-2 gap-2">
         {units.map((uid) => {
           const remaining = cooldowns[uid] ?? 0;
@@ -143,7 +171,12 @@ function UnitCooldownGrid({ cooldowns }: { cooldowns: Record<string, number> }) 
   );
 }
 
-function FaultQueueList({ queue }: { queue: PendingFaultItem[] }) {
+interface FaultQueueListProps {
+  queue: PendingFaultItem[];
+  onSelect: (index: number) => void;
+}
+
+function FaultQueueList({ queue, onSelect }: FaultQueueListProps) {
   return (
     <div className="rounded-lg border border-surface-border bg-surface-card p-4">
       <h3 className="font-display text-xs uppercase tracking-wider text-text-muted mb-3 flex items-center gap-2">
@@ -156,28 +189,41 @@ function FaultQueueList({ queue }: { queue: PendingFaultItem[] }) {
         <p className="text-text-muted text-xs">暂无待处理故障</p>
       ) : (
         <div className="space-y-2">
-          {queue.map((item, i) => (
-            <div
-              key={`${item.unit_id}-${item.queued_at}-${i}`}
-              className={`rounded border px-3 py-2 text-xs ${
-                i === 0
-                  ? "border-amber/30 bg-amber/10"
-                  : "border-surface-border bg-surface-elevated"
-              }`}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                {i === 0 && (
-                  <span className="text-amber font-bold text-xs px-1 rounded bg-amber/20">
-                    下一个
+          {queue.map((item, i) => {
+            const isFirst = i === 0;
+            const isLast = i === queue.length - 1;
+            return (
+              <div
+                key={`${item.unit_id}-${item.queued_at}-${i}`}
+                onClick={() => onSelect(i)}
+                className={`rounded border px-3 py-2 text-xs cursor-pointer transition-colors hover:border-amber/40 ${
+                  isFirst
+                    ? "border-amber/30 bg-amber/10"
+                    : "border-surface-border bg-surface-elevated"
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  {isFirst && (
+                    <span className="text-amber font-bold text-xs px-1 rounded bg-amber/20">
+                      最新
+                    </span>
+                  )}
+                  {isLast && !isFirst && (
+                    <span className="text-text-muted font-bold text-xs px-1 rounded bg-surface-border">
+                      最旧
+                    </span>
+                  )}
+                  <span className="font-medium text-text-primary">{item.unit_id}</span>
+                  <span className="text-text-muted">—</span>
+                  <span className="text-text-secondary">{item.fault_types.join(", ")}</span>
+                  <span className="ml-auto text-text-muted font-mono">
+                    {relativeTime(item.queued_at)}
                   </span>
-                )}
-                <span className="font-medium text-text-primary">{item.unit_id}</span>
-                <span className="text-text-muted">—</span>
-                <span className="text-text-secondary">{item.fault_types.join(", ")}</span>
+                </div>
+                <p className="text-text-muted leading-relaxed truncate">{item.symptom_preview}</p>
               </div>
-              <p className="text-text-muted leading-relaxed truncate">{item.symptom_preview}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -257,6 +303,9 @@ function SensorDataTable({ data }: { data: SensorPointSnapshot[] }) {
 }
 
 function CurrentDiagnosisCard({ current }: { current: CurrentDiagnosisInfo }) {
+  const pct = PHASE_PROGRESS[current.phase] ?? 0;
+  const progressColor = getProgressColor(pct);
+
   return (
     <div className="rounded-lg border border-amber/30 bg-surface-card p-4 space-y-4">
       <div className="flex items-center justify-between">
@@ -271,6 +320,14 @@ function CurrentDiagnosisCard({ current }: { current: CurrentDiagnosisInfo }) {
       </div>
 
       <AutoPipelineView phase={current.phase} />
+
+      {/* Phase progress bar */}
+      <div className="h-1.5 rounded-full bg-surface-elevated overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-700 ${progressColor}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
 
       {current.sensor_data.length > 0 && (
         <div>
@@ -298,7 +355,7 @@ interface AutoDiagnosisPanelProps {
 }
 
 export function AutoDiagnosisPanel({ isManualRunning = false }: AutoDiagnosisPanelProps) {
-  const { enabled, status, results } = useAutoStore();
+  const { enabled, status, results, setSelectedIndex } = useAutoStore();
   const { start, stop } = useAutoDiagnosis();
 
   const isRunning = status?.running ?? false;
@@ -347,7 +404,7 @@ export function AutoDiagnosisPanel({ isManualRunning = false }: AutoDiagnosisPan
           <UnitCooldownGrid cooldowns={status.unit_cooldowns} />
           {status.current && <CurrentDiagnosisCard current={status.current} />}
           {status.pending_queue.length > 0 && (
-            <FaultQueueList queue={status.pending_queue} />
+            <FaultQueueList queue={status.pending_queue} onSelect={setSelectedIndex} />
           )}
         </>
       )}
@@ -359,10 +416,11 @@ export function AutoDiagnosisPanel({ isManualRunning = false }: AutoDiagnosisPan
             最近诊断结果
           </h3>
           <div className="space-y-2">
-            {results.slice(0, 5).map((rec) => (
+            {results.slice(0, 5).map((rec, i) => (
               <div
                 key={rec.session_id}
-                className="rounded border border-surface-border bg-surface-elevated px-3 py-2 text-xs flex items-center justify-between gap-2"
+                onClick={() => setSelectedIndex(i)}
+                className="rounded border border-surface-border bg-surface-elevated px-3 py-2 text-xs flex items-center justify-between gap-2 cursor-pointer hover:border-amber/30 transition-colors"
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="font-medium text-text-primary">{rec.unit_id}</span>

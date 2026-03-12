@@ -1,8 +1,11 @@
+import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
 import { DiagnosisPage } from "@/pages/DiagnosisPage";
 import { HistoryPage } from "@/pages/HistoryPage";
+import { ManualPage } from "@/pages/ManualPage";
 import { useAutoStore } from "@/store/autoStore";
 import { useAutoDiagnosis } from "@/hooks/useAutoDiagnosis";
+import logoUrl from "@/assets/logo.svg";
 
 function Nav() {
   const { enabled, setEnabled, status } = useAutoStore();
@@ -17,14 +20,21 @@ function Nav() {
     }
   };
 
+  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+    `px-4 py-1.5 text-sm font-medium rounded transition-colors ${
+      isActive
+        ? "text-amber border-b-2 border-amber"
+        : "text-text-secondary hover:text-text-primary"
+    }`;
+
   return (
     <nav className="sticky top-0 z-50 border-b border-surface-border bg-surface-card px-6">
       <div className="mx-auto flex max-w-screen-xl items-center gap-6 py-3">
         {/* Logo */}
         <div className="flex items-center gap-2 mr-4">
-          <span className="text-amber text-xl">⚡</span>
+          <img src={logoUrl} alt="logo" className="h-8 w-8 object-contain" />
           <span className="font-display text-lg font-semibold tracking-wide text-text-primary">
-            水电运维
+            水电机组智能运维系统
           </span>
           <span className="text-xs font-medium text-amber px-1.5 py-0.5 border border-amber/30 rounded bg-amber/10 ml-1">
             AI 诊断辅助
@@ -33,30 +43,14 @@ function Nav() {
 
         {/* Nav links */}
         <div className="flex items-center gap-1">
-          <NavLink
-            to="/"
-            end
-            className={({ isActive }) =>
-              `px-4 py-1.5 text-sm font-medium rounded transition-colors ${
-                isActive
-                  ? "text-amber border-b-2 border-amber"
-                  : "text-text-secondary hover:text-text-primary"
-              }`
-            }
-          >
+          <NavLink to="/" end className={navLinkClass}>
             故障诊断
           </NavLink>
-          <NavLink
-            to="/history"
-            className={({ isActive }) =>
-              `px-4 py-1.5 text-sm font-medium rounded transition-colors ${
-                isActive
-                  ? "text-amber border-b-2 border-amber"
-                  : "text-text-secondary hover:text-text-primary"
-              }`
-            }
-          >
+          <NavLink to="/history" className={navLinkClass}>
             历史记录
+          </NavLink>
+          <NavLink to="/manual" className={navLinkClass}>
+            操作手册
           </NavLink>
         </div>
 
@@ -95,6 +89,39 @@ function Nav() {
   );
 }
 
+function ToastStack() {
+  const { toasts, dismissToast } = useAutoStore();
+
+  useEffect(() => {
+    if (toasts.length === 0) return;
+    const latest = toasts[toasts.length - 1];
+    const id = setTimeout(() => dismissToast(latest.id), 15000);
+    return () => clearTimeout(id);
+  }, [toasts, dismissToast]);
+
+  if (toasts.length === 0) return null;
+
+  return (
+    <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 max-w-sm">
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          className="flex items-start gap-3 rounded-lg border border-amber/30 bg-surface-card shadow-lg px-4 py-3 animate-result"
+        >
+          <span className="text-amber mt-0.5 shrink-0">⚠</span>
+          <p className="text-xs text-text-secondary leading-relaxed flex-1">{t.message}</p>
+          <button
+            onClick={() => dismissToast(t.id)}
+            className="text-text-muted hover:text-text-primary shrink-0 text-sm leading-none"
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -103,7 +130,9 @@ export default function App() {
         <Routes>
           <Route path="/" element={<DiagnosisPage />} />
           <Route path="/history" element={<HistoryPage />} />
+          <Route path="/manual" element={<ManualPage />} />
         </Routes>
+        <ToastStack />
       </div>
     </BrowserRouter>
   );

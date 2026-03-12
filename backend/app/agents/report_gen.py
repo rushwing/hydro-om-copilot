@@ -3,41 +3,30 @@ report_gen node — generates check-step SOP and a ready-to-use shift handover d
 """
 
 import json
-
-from langchain_anthropic import ChatAnthropic
-from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.prompts import ChatPromptTemplate
+import traceback
 
 from app.agents.state import AgentState
-from app.config import settings
+from app.utils.anthropic_client import llm_json
 from app.utils.prompts import REPORT_GEN_PROMPT
-
-_llm = ChatAnthropic(
-    model=settings.llm_model,
-    temperature=settings.llm_temperature,
-    api_key=settings.anthropic_api_key,
-)
-
-_chain = (
-    ChatPromptTemplate.from_template(REPORT_GEN_PROMPT)
-    | _llm
-    | JsonOutputParser()
-)
 
 
 async def report_gen_node(state: AgentState) -> dict:
+    prompt = REPORT_GEN_PROMPT.format(
+        query=state["raw_query"],
+        unit_id=(state.get("parsed_symptom") or {}).get("unit_id", "未知机组"),
+        root_causes=json.dumps(state.get("root_causes", []), ensure_ascii=False),
+        risk_level=state.get("risk_level", "medium"),
+        escalation_required=state.get("escalation_required", False),
+        escalation_reason=state.get("escalation_reason") or "",
+    )
+
+    session_id = state.get("session_id", "")
     try:
-        result = await _chain.ainvoke(
-            {
-                "query": state["raw_query"],
-                "unit_id": state.get("parsed_symptom", {}).get("unit_id", "未知机组"),
-                "root_causes": json.dumps(state.get("root_causes", []), ensure_ascii=False),
-                "risk_level": state.get("risk_level", "medium"),
-                "escalation_required": state.get("escalation_required", False),
-                "escalation_reason": state.get("escalation_reason", ""),
-            }
+        result = await llm_json(
+            prompt, max_tokens=8192, _session_id=session_id, _node="report_gen"
         )
     except Exception as exc:
+        print(f"[report_gen_node ERROR] {exc}\n{traceback.format_exc()}", flush=True)
         return {
             "check_steps": [],
             "report_draft": None,

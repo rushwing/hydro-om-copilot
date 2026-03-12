@@ -15,6 +15,7 @@ from collections.abc import Callable
 
 from app.agents.graph import get_compiled_graph
 from app.store.diagnosis_store import AutoDiagnosisRecord, DiagnosisStore
+from app.utils.session_log import create_session_logger, remove_session_logger
 from mcp_servers.fault_aggregator import FaultSummary
 
 _logger = logging.getLogger("app.agents.auto_diagnosis")
@@ -123,6 +124,15 @@ async def run_auto_diagnosis_streaming(
 
     auto_graph = get_compiled_auto_graph()
 
+    fault_type = summary.fault_types[0] if summary.fault_types else "auto"
+    sl = create_session_logger(
+        session_id=session_id,
+        unit_id=summary.unit_id,
+        fault_type=fault_type,
+    )
+    sl.pipeline("__session__", "start",
+                unit_id=summary.unit_id, fault_types=summary.fault_types)
+
     raw_query = (
         summary.symptom_text
         if summary.unit_id in summary.symptom_text
@@ -159,6 +169,7 @@ async def run_auto_diagnosis_streaming(
             name = event.get("name", "")
 
             if kind == "on_chain_start" and name in _AUTO_NODES:
+                sl.pipeline(name, "start")
                 if on_phase:
                     on_phase(name)
 
@@ -166,6 +177,9 @@ async def run_auto_diagnosis_streaming(
                 output = (event.get("data") or {}).get("output") or {}
                 if isinstance(output, dict):
                     node_outputs[name] = output
+                has_error = bool(output.get("error")) if isinstance(output, dict) else False
+                sl.pipeline(name, "error" if has_error else "end",
+                            **({"error": output.get("error")} if has_error else {}))
                 if name == "sensor_reader" and on_sensor_data:
                     on_sensor_data(output.get("sensor_data", []))
 
@@ -182,6 +196,7 @@ async def run_auto_diagnosis_streaming(
             exc,
             exc_info=True,
         )
+        sl.pipeline("__session__", "error", error=str(exc))
         error_str = str(exc)
 
     # Merge node outputs to reconstruct final state fields
@@ -204,6 +219,16 @@ async def run_auto_diagnosis_streaming(
         sources=merged.get("sources", []),
         error=error_str,
     )
+
+    top_cause = record.root_causes[0].get("title") if record.root_causes else None
+    sl.finalize(
+        risk_level=record.risk_level,
+        top_cause=top_cause,
+        escalation_required=record.escalation_required,
+        sop_steps_total=len(record.check_steps),
+        error=record.error,
+    )
+    remove_session_logger(session_id)
 
     store.push(record)
     if on_phase:

@@ -209,3 +209,6 @@ __marimo__/
 # Node
 node_modules/
 frontend/dist/
+
+# Session logs (written at runtime)
+logs/

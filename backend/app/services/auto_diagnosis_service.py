@@ -175,6 +175,11 @@ class AutoDiagnosisService:
             "epoch_phase": epoch_phase,
         }
 
+    def reset_cooldowns(self) -> None:
+        """Reset diagnosis cooldown for all monitored units."""
+        for uid in _MONITORED_UNITS:
+            self._agg.reset_cooldown(uid)
+
     async def drain(self) -> None:
         """Cancel worker and wait for it to exit (for shutdown)."""
         if self._worker_task and not self._worker_task.done():

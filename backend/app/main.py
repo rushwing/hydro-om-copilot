@@ -3,13 +3,37 @@ FastAPI application entry point.
 """
 
 import logging
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from loguru import logger as loguru_logger
 
 from app.api.routes import auto_diagnosis, diagnosis, health
 from app.config import settings
+
+# ── Loguru root logger ────────────────────────────────────────────────────────
+# Captures WARNING+ from all modules to logs/root.log (persistent across restarts).
+# Per-session structured logs are written by app.utils.session_log.SessionLogger.
+
+Path("logs").mkdir(exist_ok=True)
+loguru_logger.remove()
+loguru_logger.add(
+    sys.stderr,
+    level="INFO",
+    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | {name}:{line} - {message}",  # noqa: E501
+    colorize=True,
+)
+loguru_logger.add(
+    "logs/root.log",
+    level="WARNING",
+    rotation="10 MB",
+    retention="30 days",
+    encoding="utf-8",
+    format="{time:YYYY-MM-DDTHH:mm:ssZ} | {level} | {name}:{line} - {message}",
+)
 
 _logger = logging.getLogger("app.main")
 

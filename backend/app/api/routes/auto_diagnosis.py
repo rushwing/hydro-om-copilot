@@ -104,3 +104,12 @@ async def stop_auto_diagnosis(
     """停止轮询（数据采集）。进行中的诊断可继续跑完。"""
     was_running = await service.stop()
     return {"ok": True, "polling_was_running": was_running}
+
+
+@router.post("/auto/reset-cooldowns")
+async def reset_cooldowns_endpoint(
+    service: AutoDiagnosisService = Depends(get_auto_diagnosis_service),
+) -> dict:
+    """重置所有机组冷却期，使各机组立即可再次触发诊断。"""
+    service.reset_cooldowns()
+    return {"ok": True}
