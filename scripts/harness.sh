@@ -257,7 +257,9 @@ ${tc_content}
   local tmp_out session_log="${REPO_ROOT}/.harness_sessions"
   tmp_out=$(mktemp)
 
-  "${CODEX_REVIEW[@]}" "Read agents/openai-codex/SOUL.md and harness/review-standard.md.
+  # Write prompt to a temp file and deliver via stdin to avoid ARG_MAX limits on large diffs
+  local tmp_p; tmp_p=$(mktemp)
+  printf '%s' "Read agents/openai-codex/SOUL.md and harness/review-standard.md.
 
 ## Pre-fetched context for PR #${pr} — use directly, do NOT re-fetch
 
@@ -280,7 +282,9 @@ Post findings to GitHub (network is available):
   gh pr review ${pr} --comment -b '...'         # non-blocking
   gh pr review ${pr} --request-changes -b '...' # blocking
 
-Do NOT merge. HITL merge only." 2>&1 | tee "$tmp_out"
+Do NOT merge. HITL merge only." > "$tmp_p"
+  "${CODEX_REVIEW[@]}" - < "$tmp_p" 2>&1 | tee "$tmp_out"
+  rm -f "$tmp_p"
 
   # ── Session ID 记录 ──────────────────────────────────────────────────────────
   local session_id=""
@@ -321,7 +325,8 @@ cmd_implement() {
   fi
 
   info "触发 Claude Code 认领并实现 ${req} ..."
-  "${CLAUDE_CMD[@]}" "
+  local tmp_p; tmp_p=$(mktemp)
+  printf '%s' "
 Read agents/claude-code/SOUL.md.
 
 Your task: implement ${req}.
@@ -333,7 +338,9 @@ Follow SOUL.md §SOP Phase 1 (Claim PR) then Phase 2 (Implementation) then Phase
 5. Write tests first, then implementation
 6. bash scripts/local/test.sh must pass before opening PR
 7. Set ${req}.md status=review and open PR (Draft until tests pass)
-"
+" > "$tmp_p"
+  "${CLAUDE_CMD[@]}" - < "$tmp_p"
+  rm -f "$tmp_p"
 }
 
 cmd_tc_design() {
@@ -375,7 +382,9 @@ cmd_tc_design() {
   local tmp_out session_log="${REPO_ROOT}/.harness_sessions"
   tmp_out=$(mktemp)
   # tc-design 的 Claim PR mutex 需要 git push + gh pr create/merge，必须用 --dangerously-bypass-approvals-and-sandbox
-  "${CODEX_REVIEW[@]}" "
+  # Write prompt via stdin to avoid ARG_MAX limits
+  local tmp_p; tmp_p=$(mktemp)
+  printf '%s' "
 Read agents/openai-codex/SOUL.md, harness/testing-standard.md, harness/requirement-standard.md.
 
 Your task: design acceptance test cases for ${req}.
@@ -391,7 +400,9 @@ IMPORTANT — follow this exact order (mutex first, then work):
    - Specify layer (L1 unit / L2 integration / L3 E2E)
 5. Update tasks/features/${req}.md: add TC to test_case_ref, status=test_designed, owner=unassigned
 6. Open PR for the TC design work (requires human review — do NOT auto-merge)
-" 2>&1 | tee "$tmp_out"
+" > "$tmp_p"
+  "${CODEX_REVIEW[@]}" - < "$tmp_p" 2>&1 | tee "$tmp_out"
+  rm -f "$tmp_p"
   local session_id
   session_id=$(grep -E 'session[- ]id[: ]+' "$tmp_out" | grep -oE '[0-9a-f-]{36}' | head -1) || true
   if [[ -n "$session_id" ]]; then
@@ -473,7 +484,8 @@ cmd_bugfix() {
 
   # Bundle 模式：直接在 REQ 分支上修复，不使用 Claim PR（REQ 分支已被持有，无需额外 mutex）
   if [[ -n "$bundle_branch" ]]; then
-    "${CLAUDE_CMD[@]}" "
+    local tmp_p; tmp_p=$(mktemp)
+    printf '%s' "
 Read agents/claude-code/SOUL.md and harness/bug-standard.md.
 
 Your task: fix ${bug} as a BUNDLE into an existing REQ branch (no separate PR).
@@ -490,7 +502,9 @@ BUNDLE MODE — no separate Claim PR (the REQ branch is already locked; see bug-
    (per bug-standard.md §6.3: status=fixed transition must be inside the PR)
 7. bash scripts/local/test.sh must pass
 8. Push to ${bundle_branch} — the fix travels with the REQ PR, no separate PR needed
-"
+" > "$tmp_p"
+    "${CLAUDE_CMD[@]}" - < "$tmp_p"
+    rm -f "$tmp_p"
     return
   fi
 
@@ -516,7 +530,8 @@ BUNDLE MODE — no separate Claim PR (the REQ branch is already locked; see bug-
 8. Open PR (base: main)"
   fi
 
-  "${CLAUDE_CMD[@]}" "
+  local tmp_p; tmp_p=$(mktemp)
+  printf '%s' "
 Read agents/claude-code/SOUL.md and harness/bug-standard.md.
 
 Your task: fix ${bug}.
@@ -532,7 +547,9 @@ ${pr_topology_instruction}
 6. In the same commit (or final commit before PR): set status=fixed, fill 根因分析 and 修复方案 in tasks/bugs/${bug}.md
    (per bug-standard.md §6.3: the PR itself must contain the status=fixed transition + RCA)
 7. bash scripts/local/test.sh must pass before opening PR
-"
+" > "$tmp_p"
+  "${CLAUDE_CMD[@]}" - < "$tmp_p"
+  rm -f "$tmp_p"
 }
 
 cmd_fix_review() {
@@ -579,7 +596,9 @@ cmd_fix_review() {
 
   info "触发 Claude Code 修复 PR #${pr} review findings..."
 
-  "${CLAUDE_CMD[@]}" "
+  # Write prompt via stdin to avoid ARG_MAX limits on large review threads
+  local tmp_p; tmp_p=$(mktemp)
+  printf '%s' "
 Read agents/claude-code/SOUL.md and harness/review-standard.md.
 
 ## Pre-fetched context for PR #${pr} — use directly, do NOT re-fetch
@@ -606,7 +625,9 @@ Address every finding in both sections above:
       gh pr review ${pr} --comment -b 'Addressed review findings: ...'
 
 5. Do NOT merge the PR — HITL merge only
-"
+" > "$tmp_p"
+  "${CLAUDE_CMD[@]}" - < "$tmp_p"
+  rm -f "$tmp_p"
 }
 
 cmd_status() {
@@ -614,10 +635,12 @@ cmd_status() {
 
   local features_dir="${REPO_ROOT}/tasks/features"
   local bugs_dir="${REPO_ROOT}/tasks/bugs"
+  # Declare all loop variables once at function scope to avoid zsh local re-declaration stdout leak
+  local found s o id title pdeps pconflicts reason sev f
 
   echo -e "${CYAN}── 可 TC 设计（status=ready, owner=unassigned）──${NC}"
   if [[ -d "$features_dir" ]]; then
-    local found=0 s o id title pdeps
+    found=0 s='' o='' id='' title='' pdeps=''
     for f in "$features_dir"/*.md(N); do
       [[ -f "$f" ]] || continue
       s=$(grep '^status:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
@@ -642,7 +665,7 @@ cmd_status() {
   echo ""
   echo -e "${CYAN}── 可实现（status=test_designed, owner=unassigned）──${NC}"
   if [[ -d "$features_dir" ]]; then
-    local found=0 s o id title pdeps
+    found=0 s='' o='' id='' title='' pdeps=''
     for f in "$features_dir"/*.md(N); do
       [[ -f "$f" ]] || continue
       s=$(grep '^status:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
@@ -667,7 +690,7 @@ cmd_status() {
   echo ""
   echo -e "${CYAN}── 可修复 Bug（status=confirmed, owner=unassigned）──${NC}"
   if [[ -d "$bugs_dir" ]]; then
-    local found=0 s o id title sev pdeps pconflicts reason
+    found=0 s='' o='' id='' title='' sev='' pdeps='' pconflicts='' reason=''
     for f in "$bugs_dir"/*.md(N); do
       [[ -f "$f" ]] || continue
       s=$(grep '^status:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
