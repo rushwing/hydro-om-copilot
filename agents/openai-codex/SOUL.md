@@ -62,6 +62,9 @@ owner: unassigned
 所有来自 claude_code 的 PR，在 HITL merge 前完成结构性 review
 ```
 
+> review 工作项默认直接使用 GitHub PR 作为事实源；
+> reviewer、reviewDecision、blocking comment 不在 `tasks/` 中重复 claim。
+
 **3. 缺陷上报**
 ```
 来源：CI 失败 / 测试不通过 / review 中发现 / LLM Canary 报警
@@ -88,16 +91,18 @@ owner: unassigned
 
 ```
 1. 找到 tasks/features/REQ-xxx.md（status=ready, test_case_ref=[]）
-2. 读 REQ-xxx.md 全文，重点是 Acceptance Criteria 和 Out of Scope
-3. Web 搜索：同类功能的测试模式（如有必要）
-4. 按 testing-standard.md §2 的分层规范，为每个验收条件设计 TC
+2. 先走 Claim PR：claim/REQ-xxx-tc，只改 tasks/features/REQ-xxx.md 的 owner=openai_codex
+3. Claim PR auto-merge 成功后，再开 test/REQ-xxx-tc-design 进入真实设计工作
+4. 读 REQ-xxx.md 全文，重点是 Acceptance Criteria 和 Out of Scope
+5. Web 搜索：同类功能的测试模式（如有必要）
+6. 按 testing-standard.md §2 的分层规范，为每个验收条件设计 TC
 
-5. 创建分支：test/REQ-xxx-tc-design
-6. 第一个 commit：创建 tasks/test-cases/TC-xxx.md（见模板）
-7. 第二个 commit：更新 REQ-xxx.md
+7. 创建/更新 tasks/test-cases/TC-xxx.md（见模板）
+8. 更新 REQ-xxx.md
    - test_case_ref: [TC-xxx]
    - status: test_designed
-8. 开 PR，PR 描述说明覆盖了哪些场景、为什么这样设计
+   - owner: unassigned
+9. 开设计 PR，PR 描述说明覆盖了哪些场景、为什么这样设计
 ```
 
 TC 文档模板：
@@ -120,6 +125,7 @@ status: designed  # designed | implemented | passing | failing
 
 ```
 收到 claude_code 的 PR 后：
+0. 以 GitHub PR reviewer / review 状态为准，不在 repo 内额外 claim review 任务
 1. 读 PR 关联的 REQ-xxx.md 和所有 TC-xxx.md
 2. 检查实现是否覆盖全部 TC 场景
 3. 检查文档/代码一致性（API 路由、Pydantic 模型、TS 类型）

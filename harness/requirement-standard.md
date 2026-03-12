@@ -11,8 +11,8 @@ last_reviewed: 2026-03-12
 
 > 本规范定义 Hydro O&M Copilot 在 Harness Engineering 范式下的需求记录方式、
 > 状态机、优先级、Phase 管理，以及多 Agent 自动认领与交接规则。
-> 目标是让 Claude Code 与 OpenAI Codex 能在同一套 repo 内规范下读取需求、
-> 判断可认领任务、执行开发，并把实现状态回写到统一位置。
+> 目标是让 Claude Code 与 OpenAI Codex 能在同一套 repo 内规范下读取开发输入、
+> 判断可认领任务、执行开发，并把需求状态回写到统一位置。
 
 ---
 
@@ -40,7 +40,16 @@ last_reviewed: 2026-03-12
 | 好示例 | 某个自动诊断 stop 语义、历史归档流转、测试补齐要求写入 `tasks/items/` |
 | 坏示例 | 关键验收条件只存在于聊天里，repo 内无对应需求项 |
 
-### 2.2 需求文档应短小、结构化、可认领
+### 2.2 `tasks/` 只承载开发输入，不重复建模 GitHub 协作对象
+
+| 项目 | 内容 |
+|---|---|
+| 规则 | `tasks/` 默认只承载 REQ、TC，以及少量需要长期跟踪的 repo 内 Bug；PR、review、merge 默认以 GitHub 为事实源 |
+| 目的 | 避免在 repo 与 GitHub 之间维护两套并行状态，减少 Agent 同步负担 |
+| 好示例 | `tasks/features/REQ-013.md` 记录需求，PR reviewer / reviewDecision / merge 状态直接看 GitHub |
+| 坏示例 | 在 repo 中再维护一份“review 已认领 / review 通过”，同时 GitHub 上还有 reviewer 和 review 状态 |
+
+### 2.3 需求文档应短小、结构化、可认领
 
 | 项目 | 内容 |
 |---|---|
@@ -49,7 +58,7 @@ last_reviewed: 2026-03-12
 | 好示例 | “修复 SSE 断流时 session log 清理”单独成项，含验收条件 |
 | 坏示例 | 一个文档同时混写 10 个目标、多个阶段和大量开放讨论 |
 
-### 2.3 状态必须简单、可迁移
+### 2.4 状态必须简单、可迁移
 
 | 项目 | 内容 |
 |---|---|
@@ -68,7 +77,7 @@ last_reviewed: 2026-03-12
 tasks/                  # 所有待执行工作项的根目录
   phases/               # Phase 定义文档 (PHASE-xxx)
   features/             # 功能需求项 (REQ-xxx)
-  bugs/                 # Bug 报告 (BUG-xxx，见 harness/bug-standard.md)
+  bugs/                 # 可选：长期跟踪的 repo 内 Bug (BUG-xxx，见 harness/bug-standard.md)
   test-cases/           # 测试用例设计 (TC-xxx，先于实现创建)
   archive/
     done/               # 已完成归档
@@ -81,7 +90,7 @@ tasks/                  # 所有待执行工作项的根目录
 |---|---|---|
 | `tasks/phases/` | `PHASE-xxx` | 记录阶段目标、范围、入口/退出条件 |
 | `tasks/features/` | `REQ-xxx` | 当前活跃的功能需求项 |
-| `tasks/bugs/` | `BUG-xxx` | Bug 报告（独立生命周期，见 bug-standard） |
+| `tasks/bugs/` | `BUG-xxx` | 可选：长期跟踪、需要 Agent 自动挑选修复的 Bug |
 | `tasks/test-cases/` | `TC-xxx` | 测试用例设计文档，先于实现创建 |
 | `tasks/archive/done/` | — | 已完成的 REQ / BUG / TC |
 | `tasks/archive/cancelled/` | — | 已废弃的 REQ / BUG / TC |
@@ -90,7 +99,7 @@ tasks/                  # 所有待执行工作项的根目录
 
 - `phases/`：一个 Phase 一份文档
 - `features/`：一个需求项一份文档
-- `bugs/`：一个 Bug 一份文档（不与 REQ 合并）
+- `bugs/`：仅在 Bug 被明确提升为 repo 内长期工作项时使用
 - `test-cases/`：一个需求项或 Bug 对应一份或多份测试用例文档
 - `archive/done/` 和 `archive/cancelled/`：从各活跃目录移入，子目录区分完成和废弃
 
@@ -231,7 +240,7 @@ draft → ready → test_designed → in_progress → review → done
 
 ### 7.1 Agent 默认认领顺序
 
-1. `ready` 且未阻塞
+1. `ready`（供 openai_codex 进行 TC 设计）或 `test_designed`（供 claude_code 进行实现）且未阻塞
 2. 当前 Phase 内
 3. 优先级从 `P0` 到 `P3`
 4. 依赖最少、验收最明确的项优先
@@ -278,18 +287,22 @@ draft → ready → test_designed → in_progress → review → done
 
 | 步骤 | 操作 |
 |---|---|
-| 1 | 创建 Claim 分支：`claim/REQ-xxx` |
-| 2 | 单文件 commit：`tasks/features/REQ-xxx.md`，`owner → 自身标识`，`status → in_progress`；message：`claim: REQ-xxx` |
+| 1 | 创建 Claim 分支：TC 设计用 `claim/REQ-xxx-tc`；实现用 `claim/REQ-xxx` |
+| 2 | 单文件 commit：仅改 `tasks/features/REQ-xxx.md`；TC 设计 claim 只改 `owner → openai_codex`，实现 claim 改 `owner → claude_code` 且 `status → in_progress`；message：`claim: REQ-xxx` |
 | 3 | Push，立即开 **Claim PR**，标题：`claim: REQ-xxx`，启用 **auto-merge**（无需 human review）|
 | 4 | 检查 Claim PR 结果：merged → 任务归你；conflict/failed → 任务已被认领，删除分支，选其他任务 |
-| 5 | 认领成功后，新开实现分支 `feat/REQ-xxx-<desc>`，做实现工作，开 **Implementation PR**（需 HITL review）|
+| 5 | 认领成功后，按任务类型继续：TC 设计走 `test/REQ-xxx-tc-design`；实现走 `feat/REQ-xxx-<desc>` |
 
-| 好示例 | Claim PR 已 merge，`owner: claude_code` 在 main 上可见，开始实现 |
-| 坏示例 | 跳过 Claim PR 直接实现，或同一 PR 混入实现代码（实现 PR 不能 auto-merge）|
+| 好示例 | Claim PR 已 merge；TC 设计时 `owner: openai_codex` 在 main 上可见，或实现时 `owner: claude_code` 在 main 上可见 |
+| 坏示例 | 跳过 Claim PR 直接开始 TC 设计/实现，或同一 PR 混入真实实现代码（实现 PR 不能 auto-merge）|
 
 > **GitHub 配置要求**（见 ci-standard.md §Claim PR）：
 > Claim PR 标题匹配 `^claim: REQ-` 时允许 auto-merge，且 0 required reviews。
 > Implementation PR 需要 1 个 human approve。
+
+> **TC 设计完成后的回写规则**：
+> `openai_codex` 在设计 PR 中写入 `test_case_ref`、把 `status` 改为 `test_designed`，
+> 并把 `owner` 释放回 `unassigned`，供实现阶段继续认领。
 
 ### 8.4 放弃与释放
 

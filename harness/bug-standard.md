@@ -11,7 +11,7 @@ last_reviewed: 2026-03-12
 
 > 本规范定义 Hydro O&M Copilot 在 Harness Engineering 范式下的 Bug 记录方式、
 > 状态机、严重等级、Agent 自动认领与回归测试要求。
-> Bug 与功能需求（REQ）生命周期独立，但共用同一套 Agent 认领机制和 Branch-as-Lock 规则。
+> 默认 Bug 协作走 GitHub；仅当缺陷需要长期跟踪或进入 Agent 自动修复队列时，才提升为 repo 内 Bug 工作项。
 
 ---
 
@@ -24,6 +24,14 @@ last_reviewed: 2026-03-12
   - [ ] 人工测试发现与预期不符的行为时
   - [ ] LLM Canary 结果偏离可接受范围时
   - [ ] PR review 中发现已合并代码存在缺陷时
+
+### 1.1 事实源边界
+
+| 场景 | 默认事实源 |
+|---|---|
+| PR review 中发现的问题 | GitHub PR comment / review |
+| CI 失败或临时缺陷协作 | GitHub issue / PR |
+| 需要长期跟踪、与 REQ/TC 建强关联、或进入 Agent 自动修复队列 | `tasks/bugs/BUG-xxx.md` |
 
 ---
 
@@ -39,6 +47,8 @@ last_reviewed: 2026-03-12
 ---
 
 ## 3. 目录与文档规范
+
+> 本节仅适用于 Bug 被提升为 repo 内工作项时。
 
 ### 3.1 目录位置
 
@@ -175,14 +185,14 @@ open → confirmed → in_progress → fixed → regressing → closed
 - [ ] `owner == unassigned`
 - [ ] `related_req` 中涉及的 REQ 无正在进行的 `in_progress` 项（避免同时修改同一代码区域）
 
-### 6.2 认领规则（Branch-as-Lock）
+### 6.2 认领规则（仅 repo 内 Bug 适用）
 
 | 项目 | 内容 |
 |---|---|
 | 分支命名 | `fix/BUG-001-<short-description>` |
 | 第一个 commit | 只改 `tasks/bugs/BUG-xxx.md`：`owner` → 自身标识，`status` → `in_progress` |
 | commit message | `claim: BUG-001` |
-| 竞态解决 | 同 requirement-standard §8.3，后 push 失败方重选其他 `confirmed` Bug |
+| 竞态解决 | 同 requirement-standard 的 Claim 机制；若只是普通 GitHub issue，则直接用 GitHub assignee / PR 处理，不在 repo 内 claim |
 
 ### 6.3 修复完成要求
 

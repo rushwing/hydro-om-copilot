@@ -75,13 +75,24 @@ flowchart LR
 
 ---
 
+## 事实源边界
+
+| 对象 | 默认事实源 | 说明 |
+|---|---|---|
+| REQ / Phase / TC | repo `tasks/` | Agent 开发输入，需本地可读、可扫描、可回写 |
+| PR / Review / Merge | GitHub PR | reviewer、review comments、reviewDecision、merge gate 不在 repo 内重复建模 |
+| Bug | GitHub（默认） | 日常缺陷、PR review 缺陷、CI 失败优先走 GitHub |
+| 长期 Bug | `tasks/bugs/`（可选） | 仅当 Bug 需要长期跟踪或被 Agent 自动挑选修复时提升为 repo 工作项 |
+
+---
+
 ## 任务目录
 
 ```
 tasks/
   phases/       PHASE-xxx  迭代边界定义
   features/     REQ-xxx    功能需求项
-  bugs/         BUG-xxx    缺陷报告
+  bugs/         BUG-xxx    可选：长期跟踪的 repo 内 Bug
   test-cases/   TC-xxx     验收测试用例（先于实现创建）
   archive/
     done/                  已完成
@@ -100,7 +111,7 @@ PR merged to main
             └─▶ 扫描 tasks/features/：status=test_designed, owner=unassigned
             └─▶ 调用 claude -p 认领并实现
             └─▶ claude_code 开 Draft PR
-            └─▶ openai_codex review
+            └─▶ openai_codex 在 GitHub PR 上 review
             └─▶ HITL 确认 merge → 循环
 ```
 

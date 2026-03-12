@@ -11,10 +11,18 @@ last_reviewed: 2026-03-12
 
 > **当前状态：stub。** 已知原则已记录，可作为临时执行依据。
 > 完整规程待 openai_codex 在实际 review 中积累模式后补充。
+> 本规程明确：`review` 的事实源是 GitHub PR，而不是 `tasks/`。
 
 ---
 
 ## 已确定原则
+
+### Review Work Item 边界
+
+- [ ] Review 工作项的事实源是 GitHub PR：reviewer、review comments、review decision、merge gate 都以 GitHub 为准
+- [ ] 不在 `tasks/` 中重复维护 `review_claimed` / `review_in_progress` / `review_done`
+- [ ] repo 内只保留 review 规则与 checklist，不保留 review 状态机
+- [ ] 若需要追踪 review 责任，优先使用 GitHub reviewer / assignee / labels
 
 ### PR 提交前（作者自检，claude_code）
 
