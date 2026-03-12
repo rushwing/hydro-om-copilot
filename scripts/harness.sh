@@ -28,8 +28,9 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # harness.sh 是用户主动触发的，统一跳过逐步权限确认
 # 若需要交互式确认，直接在终端运行 claude（不走 harness.sh）
 CLAUDE_CMD=(claude --dangerously-skip-permissions -p)
-# CLAUDE_APPROVAL 可覆盖（如 CI 注入自定义 flag）
-if [[ -n "${CLAUDE_APPROVAL:-}" ]]; then CLAUDE_CMD=(claude "$CLAUDE_APPROVAL" -p); fi
+# CLAUDE_APPROVAL 可覆盖默认的 --dangerously-skip-permissions（如 CI 注入其他 flag，或留空以交互式运行）
+if [[ -n "${CLAUDE_APPROVAL+x}" && -z "${CLAUDE_APPROVAL}" ]]; then CLAUDE_CMD=(claude -p)
+elif [[ -n "${CLAUDE_APPROVAL:-}" ]]; then CLAUDE_CMD=(claude "$CLAUDE_APPROVAL" -p); fi
 # zsh 数组：避免变量含空格时被当成单一命令名执行
 # review / tc-design 均需调 gh（git push、pr create/merge），需要网络访问
 CODEX_REVIEW=(codex exec --dangerously-bypass-approvals-and-sandbox)
@@ -774,7 +775,7 @@ Commands:
   status                                     列出当前所有可认领任务
 
 环境变量:
-  CLAUDE_APPROVAL  claude 的 approval flag（默认空，即交互式）
+  CLAUDE_APPROVAL  claude 的 approval flag（默认 --dangerously-skip-permissions；设为空字符串可切换为交互式）
 
 示例:
   ./scripts/harness.sh review 18
