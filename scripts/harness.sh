@@ -147,7 +147,8 @@ cmd_review() {
   pr_base=$( gh pr view "$pr" --json baseRefName --jq '.baseRefName')
   pr_head=$( gh pr view "$pr" --json headRefName --jq '.headRefName')
   pr_body=$( gh pr view "$pr" --json body        --jq '.body // ""')
-  pr_diff=$( gh pr diff "$pr" 2>/dev/null || echo "(diff unavailable)")
+  pr_diff=$( gh pr diff "$pr" 2>/dev/null) || die "无法获取 PR #${pr} diff，请确认 gh 已登录且 PR 存在"
+  [[ -n "$pr_diff" ]] || die "PR #${pr} diff 为空，无法进行 review"
 
   # ── 查找关联 REQ/BUG 并内联内容 ─────────────────────────────────────────────
   local task_id task_section=""
@@ -505,20 +506,20 @@ cmd_fix_review() {
   pr_head=$(gh pr view  "$pr" --json headRefName -q '.headRefName')
   pr_base=$(gh pr view  "$pr" --json baseRefName -q '.baseRefName')
 
-  # 拉取 review 顶层 comments（分页，排除空 body）
+  # 拉取 review 顶层 comments（分页，排除空 body）— 失败时 die，不静默跳过
   local review_comments=""
   review_comments=$(gh api --paginate "repos/{owner}/{repo}/pulls/${pr}/reviews" \
     --jq '[.[] | select((.state=="COMMENTED" or .state=="CHANGES_REQUESTED") and (.body | length > 0))
-               | {id: .id, author: .user.login, state: .state, body: .body}]' \
-    2>/dev/null) || review_comments="[]"
+               | {id: .id, author: .user.login, state: .state, body: .body}]') \
+    || die "无法获取 PR #${pr} review comments（gh API 失败）"
 
-  # 拉取 inline review comments（分页，排除 reply 和 outdated）
+  # 拉取 inline review comments（分页，排除 reply 和 outdated）— 失败时 die
   # in_reply_to_id != null → 是回复，跳过；position == null → outdated，跳过
   local inline_comments=""
   inline_comments=$(gh api --paginate "repos/{owner}/{repo}/pulls/${pr}/comments" \
     --jq '[.[] | select(.in_reply_to_id == null) | select(.position != null)
-               | {id: .id, author: .user.login, path: .path, line: .original_line, body: .body}]' \
-    2>/dev/null) || inline_comments="[]"
+               | {id: .id, author: .user.login, path: .path, line: .original_line, body: .body}]') \
+    || die "无法获取 PR #${pr} inline comments（gh API 失败）"
 
   # 如果两类 comment 都为空或空数组，提前退出
   if [[ "$review_comments" == "[]" && "$inline_comments" == "[]" ]]; then
@@ -663,7 +664,7 @@ Commands:
   fix-review <PR号>                          触发 Claude Code 修复 PR 的 review comments
   implement [--force] <REQ-xxx>              触发 Claude Code 认领并实现需求
   tc-design [--force] <REQ-xxx>              触发 Codex 设计验收测试用例
-  bugfix [--force] [--stacked <branch>] <BUG-xxx>  触发 Claude Code 认领并修复 Bug
+  bugfix [--force] [--stacked <branch>] [--bundle <branch>] <BUG-xxx>  触发 Claude Code 认领并修复 Bug
   status                                     列出当前所有可认领任务
 
 环境变量:

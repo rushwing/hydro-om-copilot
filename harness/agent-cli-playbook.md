@@ -285,7 +285,8 @@ gh pr create \
 
 | 场景 | 建议模式 |
 |---|---|
-| TC 设计 / bugfix（只写文件）| `codex exec --full-auto` |
+| TC 设计 / bug 上报（只写文件）| `codex exec --full-auto` |
+| Bug 修复（harness bugfix）| `claude -p`（由 harness.sh 调用 Claude Code）|
 | Review / 需要 gh 网络访问 | `codex exec --dangerously-bypass-approvals-and-sandbox` |
 | Claude Code 非交互 | `claude -p "..."` |
 
