@@ -190,7 +190,7 @@ Address every finding:
 2. Fix the code or doc (do NOT skip any comment)
 3. If a finding is invalid, note why — do not silently ignore
 4. After all fixes are pushed, reply to each addressed thread using its id:
-   gh api repos/{owner}/{repo}/pulls/comments/<id>/replies -X POST -f body='Fixed in <sha>: <summary>'
+   gh api repos/{owner}/{repo}/pulls/<PR>/comments/<id>/replies -X POST -f body='Fixed in <sha>: <summary>'
 Do NOT merge the PR — HITL merge only.
 "
 ```

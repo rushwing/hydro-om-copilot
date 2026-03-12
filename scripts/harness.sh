@@ -48,6 +48,44 @@ require() {
   command -v "$1" &>/dev/null || die "'$1' not found. $2"
 }
 
+# ── 依赖检查 ──────────────────────────────────────────────────────────────────
+# check_depends <file>
+# 读取 frontmatter 里的 depends_on，逐项查对应文件的 status。
+# 若所有依赖均为 done（或文件不存在/已归档），返回 0（可认领）。
+# 若有未完成依赖，prints "DEP(status) ..." 到 stdout 并返回 1。
+check_depends() {
+  local file="$1"
+  local dep_raw=""
+  dep_raw=$(grep '^depends_on:' "$file" 2>/dev/null | sed 's/^depends_on: *//' | tr -d '[]"') || true
+  [[ -z "${dep_raw// /}" ]] && return 0   # 空字段，无依赖
+
+  local blocked_list=""
+  # 用 tr 把逗号和空格都变成换行，逐项处理
+  while IFS= read -r dep; do
+    dep="${dep//[[:space:]]/}"
+    [[ -z "$dep" ]] && continue
+    local dep_file=""
+    if [[ "$dep" == REQ-* ]]; then
+      dep_file="${REPO_ROOT}/tasks/features/${dep}.md"
+    elif [[ "$dep" == BUG-* ]]; then
+      dep_file="${REPO_ROOT}/tasks/bugs/${dep}.md"
+    fi
+    # 找不到文件 → 已归档/done，跳过
+    if [[ ! -f "${dep_file:-}" ]]; then continue; fi
+    local dep_status=""
+    dep_status=$(grep '^status:' "$dep_file" | awk '{print $2}' | tr -d '"')
+    if [[ "$dep_status" != "done" ]]; then
+      blocked_list="${blocked_list} ${dep}(${dep_status})"
+    fi
+  done < <(echo "$dep_raw" | tr ',\n' '\n')
+
+  if [[ -n "$blocked_list" ]]; then
+    echo "${blocked_list## }"
+    return 1
+  fi
+  return 0
+}
+
 # ── 子命令 ────────────────────────────────────────────────────────────────────
 
 cmd_review() {
@@ -154,11 +192,9 @@ cmd_implement() {
   [[ "$owner" == "unassigned" ]] \
     || die "${req} 已被 ${owner} 认领，无法重复认领"
 
-  # depends_on 前置检查
-  local depends_on=""
-  depends_on=$(grep '^depends_on:' "$req_file" | sed 's/^depends_on: *//' | tr -d '[]" ') || true
-  if [[ -n "$depends_on" ]]; then
-    die "${req} 有未解除的依赖：depends_on=${depends_on}\n请等依赖合并后再认领。"
+  local pending_deps=""
+  if ! pending_deps=$(check_depends "$req_file"); then
+    die "${req} 有未完成的依赖：${pending_deps}\n依赖 status=done 后方可认领。"
   fi
 
   info "触发 Claude Code 认领并实现 ${req} ..."
@@ -201,11 +237,9 @@ cmd_tc_design() {
     die "${req} 已有 TC（test_case_ref=${existing_tc}），无需重复设计。若需重新设计，请先清空该字段。"
   fi
 
-  # depends_on 前置检查
-  local depends_on=""
-  depends_on=$(grep '^depends_on:' "$req_file" | sed 's/^depends_on: *//' | tr -d '[]" ') || true
-  if [[ -n "$depends_on" ]]; then
-    die "${req} 有未解除的依赖：depends_on=${depends_on}\n请等依赖合并后再设计 TC。"
+  local pending_deps=""
+  if ! pending_deps=$(check_depends "$req_file"); then
+    die "${req} 有未完成的依赖：${pending_deps}\n依赖 status=done 后方可设计 TC。"
   fi
 
   info "触发 Codex TC 设计 ${req} ..."
@@ -254,11 +288,9 @@ cmd_bugfix() {
   [[ "$owner" == "unassigned" ]] \
     || die "${bug} 已被 ${owner} 认领"
 
-  # depends_on 前置检查：有未解除依赖则拒绝认领
-  local depends_on=""
-  depends_on=$(grep '^depends_on:' "$bug_file" | sed 's/^depends_on: *//' | tr -d '[]" ') || true
-  if [[ -n "$depends_on" && "$depends_on" != "" ]]; then
-    die "${bug} 有未解除的依赖：depends_on=${depends_on}\n请等依赖合并后再认领（见 bug-standard.md §3.2 Serialize 策略）。"
+  local pending_deps=""
+  if ! pending_deps=$(check_depends "$bug_file"); then
+    die "${bug} 有未完成的依赖：${pending_deps}\n依赖 status=done 后方可认领（见 bug-standard.md §3.2 Serialize 策略）。"
   fi
 
   info "触发 Claude Code 认领并修复 ${bug} ..."
@@ -336,7 +368,7 @@ Address every finding above:
 2. Fix the issue in the code or doc (do NOT skip any comment)
 3. If a finding is invalid, leave a note in your response explaining why — do not silently ignore it
 4. After ALL fixes are committed and pushed to branch ${pr_head}, reply to each addressed thread using its id:
-   gh api repos/{owner}/{repo}/pulls/comments/<id>/replies -X POST -f body='Fixed in <commit-sha>: <one-line summary>'
+   gh api repos/{owner}/{repo}/pulls/${pr}/comments/<id>/replies -X POST -f body='Fixed in <commit-sha>: <one-line summary>'
    (GitHub has no public API to mark threads resolved; a reply is the standard signal)
 5. Do NOT merge the PR — HITL merge only
 "
@@ -358,12 +390,15 @@ cmd_status() {
       o=$(grep '^owner:'  "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       id=$(grep '^req_id:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       title=$(grep '^title:' "$f" 2>/dev/null | sed 's/^title: *//')
-      dep=$(grep '^depends_on:' "$f" 2>/dev/null | sed 's/^depends_on: *//' | tr -d '[]" ') || true
-      if [[ "$s" == "ready" && "$o" == "unassigned" && -z "$dep" ]]; then
-        echo -e "  ${GREEN}●${NC} ${id}  ${title}"
-        found=1
-      elif [[ "$s" == "ready" && "$o" == "unassigned" && -n "$dep" ]]; then
-        echo -e "  ${YELLOW}○${NC} ${id}  ${title}  (blocked: depends_on=${dep})"
+      if [[ "$s" == "ready" && "$o" == "unassigned" ]]; then
+        local pdeps=""
+        if check_depends "$f" > /dev/null 2>&1; then
+          echo -e "  ${GREEN}●${NC} ${id}  ${title}"
+          found=1
+        else
+          pdeps=$(check_depends "$f" 2>/dev/null) || true
+          echo -e "  ${YELLOW}○${NC} ${id}  ${title}  (blocked: ${pdeps})"
+        fi
       fi
     done
     [[ $found -eq 1 ]] || echo "  (无)"
@@ -382,12 +417,15 @@ cmd_status() {
       o=$(grep '^owner:'  "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       id=$(grep '^req_id:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       title=$(grep '^title:' "$f" 2>/dev/null | sed 's/^title: *//')
-      dep=$(grep '^depends_on:' "$f" 2>/dev/null | sed 's/^depends_on: *//' | tr -d '[]" ') || true
-      if [[ "$s" == "test_designed" && "$o" == "unassigned" && -z "$dep" ]]; then
-        echo -e "  ${GREEN}●${NC} ${id}  ${title}"
-        found=1
-      elif [[ "$s" == "test_designed" && "$o" == "unassigned" && -n "$dep" ]]; then
-        echo -e "  ${YELLOW}○${NC} ${id}  ${title}  (blocked: depends_on=${dep})"
+      if [[ "$s" == "test_designed" && "$o" == "unassigned" ]]; then
+        local pdeps=""
+        if check_depends "$f" > /dev/null 2>&1; then
+          echo -e "  ${GREEN}●${NC} ${id}  ${title}"
+          found=1
+        else
+          pdeps=$(check_depends "$f" 2>/dev/null) || true
+          echo -e "  ${YELLOW}○${NC} ${id}  ${title}  (blocked: ${pdeps})"
+        fi
       fi
     done
     [[ $found -eq 1 ]] || echo "  (无)"
@@ -407,13 +445,15 @@ cmd_status() {
       id=$(grep '^bug_id:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       title=$(grep '^title:' "$f" 2>/dev/null | sed 's/^title: *//')
       sev=$(grep '^severity:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
-      local dep=""
-      dep=$(grep '^depends_on:' "$f" 2>/dev/null | sed 's/^depends_on: *//' | tr -d '[]" ') || true
-      if [[ "$s" == "confirmed" && "$o" == "unassigned" && -z "$dep" ]]; then
-        echo -e "  ${GREEN}●${NC} ${id} [${sev}]  ${title}"
-        found=1
-      elif [[ "$s" == "confirmed" && "$o" == "unassigned" && -n "$dep" ]]; then
-        echo -e "  ${YELLOW}○${NC} ${id} [${sev}]  ${title}  (blocked: depends_on=${dep})"
+      if [[ "$s" == "confirmed" && "$o" == "unassigned" ]]; then
+        local pdeps=""
+        if check_depends "$f" > /dev/null 2>&1; then
+          echo -e "  ${GREEN}●${NC} ${id} [${sev}]  ${title}"
+          found=1
+        else
+          pdeps=$(check_depends "$f" 2>/dev/null) || true
+          echo -e "  ${YELLOW}○${NC} ${id} [${sev}]  ${title}  (blocked: ${pdeps})"
+        fi
       fi
     done
     [[ $found -eq 1 ]] || echo "  (无)"
