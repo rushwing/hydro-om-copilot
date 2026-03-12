@@ -177,6 +177,15 @@ open → confirmed → in_progress → fixed → regressing → closed
 - 不允许 `fixed → closed`（必须经过 `regressing`，确保回归测试跑过）
 - 不允许 PR 中无回归 TC 而将状态推进到 `fixed`
 
+### 5.4 已知例外：Stacked PR 的 `confirmed → fixed` 直接推进
+
+当采用 Stacked PR 策略时（fix 分支从依赖分支切出），fix 分支上的 `BUG-xxx.md` 处于 `confirmed` 状态（依赖分支不含 Claim PR 写入 main 的 `in_progress` commit）。此时 fix PR 的最终 commit 将状态从 `confirmed` 直接改为 `fixed`，跳过 `in_progress` 中间态。
+
+这是允许的例外，原因：
+- 认领互斥已由 Claim PR 在 `main` 上完成（`in_progress` 记录存在于 `main`）
+- fix 分支上不重复写入 `in_progress` 是为了避免向他人持有的共享依赖分支写入（见 §6.2 Stacked PR 例外）
+- PR retarget 到 `main` 时，HITL reviewer 解决 `BUG-xxx.md` 的一行冲突（`in_progress` vs `fixed`），保留 `fixed`
+
 ---
 
 ## 6. Agent 认领规程
@@ -326,3 +335,4 @@ PR 必须同时包含：
 | 0.2 | 2026-03-12 | 目录路径由 `requirements/` 更新为 `tasks/` |
 | 0.3 | 2026-03-13 | §6.2 认领规则改为 Claim PR mutex 两阶段流程，与 requirement-standard 和 agent-cli-playbook 模板 C 保持一致 |
 | 0.4 | 2026-03-13 | §6.2 补充 Bundle 例外（claim commit 提交到 REQ 分支，无 Claim PR）和 Stacked PR 例外（不写共享分支；retarget 时 HITL 解决冲突保留 fixed）|
+| 0.5 | 2026-03-13 | §5.4 新增 Stacked PR confirmed→fixed 直接推进例外说明，与 §6.2 保持一致 |
