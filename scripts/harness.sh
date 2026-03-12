@@ -28,9 +28,9 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CLAUDE_APPROVAL="${CLAUDE_APPROVAL:-}"        # 留空则交互式
 # zsh 数组：避免变量含空格时被当成单一命令名执行
 # review 需要调 gh（网络），--dangerously-bypass-approvals-and-sandbox 跳过 sandbox + 审批
-CODEX_REVIEW=(codex exec --dangerously-bypass-approvals-and-sandbox --disable websocket)
+CODEX_REVIEW=(codex exec --dangerously-bypass-approvals-and-sandbox)
 # 其他任务（tc-design 等）只需写文件，workspace-write 足够
-CODEX_EXEC=(codex exec --full-auto --disable websocket)
+CODEX_EXEC=(codex exec --full-auto)
 
 # ── 颜色 ──────────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
