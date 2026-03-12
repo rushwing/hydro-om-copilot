@@ -11,8 +11,8 @@ last_reviewed: 2026-03-12
 
 > 本规范定义 Hydro O&M Copilot 在 Harness Engineering 范式下的需求记录方式、
 > 状态机、优先级、Phase 管理，以及多 Agent 自动认领与交接规则。
-> 目标是让 Claude Code 与 OpenAI Codex 能在同一套 repo 内规范下读取需求、
-> 判断可认领任务、执行开发，并把实现状态回写到统一位置。
+> 目标是让 Claude Code 与 OpenAI Codex 能在同一套 repo 内规范下读取开发输入、
+> 判断可认领任务、执行开发，并把需求状态回写到统一位置。
 
 ---
 
@@ -40,7 +40,16 @@ last_reviewed: 2026-03-12
 | 好示例 | 某个自动诊断 stop 语义、历史归档流转、测试补齐要求写入 `tasks/items/` |
 | 坏示例 | 关键验收条件只存在于聊天里，repo 内无对应需求项 |
 
-### 2.2 需求文档应短小、结构化、可认领
+### 2.2 `tasks/` 只承载开发输入，不重复建模 GitHub 协作对象
+
+| 项目 | 内容 |
+|---|---|
+| 规则 | `tasks/` 默认只承载 REQ、TC，以及少量需要长期跟踪的 repo 内 Bug；PR、review、merge 默认以 GitHub 为事实源 |
+| 目的 | 避免在 repo 与 GitHub 之间维护两套并行状态，减少 Agent 同步负担 |
+| 好示例 | `tasks/features/REQ-013.md` 记录需求，PR reviewer / reviewDecision / merge 状态直接看 GitHub |
+| 坏示例 | 在 repo 中再维护一份“review 已认领 / review 通过”，同时 GitHub 上还有 reviewer 和 review 状态 |
+
+### 2.3 需求文档应短小、结构化、可认领
 
 | 项目 | 内容 |
 |---|---|
@@ -49,13 +58,13 @@ last_reviewed: 2026-03-12
 | 好示例 | “修复 SSE 断流时 session log 清理”单独成项，含验收条件 |
 | 坏示例 | 一个文档同时混写 10 个目标、多个阶段和大量开放讨论 |
 
-### 2.3 状态必须简单、可迁移
+### 2.4 状态必须简单、可迁移
 
 | 项目 | 内容 |
 |---|---|
-| 规则 | 只使用本规范定义的 6 个状态；禁止自行扩展近义状态 |
+| 规则 | 只使用本规范定义的 7 个状态；禁止自行扩展近义状态 |
 | 目的 | 避免多 Agent 协作时状态语义漂移 |
-| 好示例 | `ready -> in_progress -> review -> done` |
+| 好示例 | `ready -> test_designed -> in_progress -> review -> done` |
 | 坏示例 | `doing`、`wip`、`almost_done`、`ready-for-next-pass` 混用 |
 
 ---
@@ -68,7 +77,7 @@ last_reviewed: 2026-03-12
 tasks/                  # 所有待执行工作项的根目录
   phases/               # Phase 定义文档 (PHASE-xxx)
   features/             # 功能需求项 (REQ-xxx)
-  bugs/                 # Bug 报告 (BUG-xxx，见 harness/bug-standard.md)
+  bugs/                 # 可选：长期跟踪的 repo 内 Bug (BUG-xxx，见 harness/bug-standard.md)
   test-cases/           # 测试用例设计 (TC-xxx，先于实现创建)
   archive/
     done/               # 已完成归档
@@ -81,7 +90,7 @@ tasks/                  # 所有待执行工作项的根目录
 |---|---|---|
 | `tasks/phases/` | `PHASE-xxx` | 记录阶段目标、范围、入口/退出条件 |
 | `tasks/features/` | `REQ-xxx` | 当前活跃的功能需求项 |
-| `tasks/bugs/` | `BUG-xxx` | Bug 报告（独立生命周期，见 bug-standard） |
+| `tasks/bugs/` | `BUG-xxx` | 可选：长期跟踪、需要 Agent 自动挑选修复的 Bug |
 | `tasks/test-cases/` | `TC-xxx` | 测试用例设计文档，先于实现创建 |
 | `tasks/archive/done/` | — | 已完成的 REQ / BUG / TC |
 | `tasks/archive/cancelled/` | — | 已废弃的 REQ / BUG / TC |
@@ -90,7 +99,7 @@ tasks/                  # 所有待执行工作项的根目录
 
 - `phases/`：一个 Phase 一份文档
 - `features/`：一个需求项一份文档
-- `bugs/`：一个 Bug 一份文档（不与 REQ 合并）
+- `bugs/`：仅在 Bug 被明确提升为 repo 内长期工作项时使用
 - `test-cases/`：一个需求项或 Bug 对应一份或多份测试用例文档
 - `archive/done/` 和 `archive/cancelled/`：从各活跃目录移入，子目录区分完成和废弃
 
@@ -231,7 +240,7 @@ draft → ready → test_designed → in_progress → review → done
 
 ### 7.1 Agent 默认认领顺序
 
-1. `ready` 且未阻塞
+1. `ready`（供 openai_codex 进行 TC 设计）或 `test_designed`（供 claude_code 进行实现）且未阻塞
 2. 当前 Phase 内
 3. 优先级从 `P0` 到 `P3`
 4. 依赖最少、验收最明确的项优先
@@ -249,24 +258,51 @@ draft → ready → test_designed → in_progress → review → done
 
 ### 8.2 认领前检查
 
-Agent 在认领需求前，必须依次确认：
+认领有两种模式，前置条件不同：
+
+**模式 A · TC 设计认领**（openai_codex 主导，`ready → test_designed`）
+
+- [ ] `status == ready`
+- [ ] `owner == unassigned`
+- [ ] `test_case_ref` 为空（尚未有 TC 文档）
+- [ ] `depends_on` 中所有项已 `done`
+- [ ] 使用相同的 Claim PR 互斥机制（`claim/REQ-xxx`，分支命名加 `-tc` 后缀区分，如 `claim/REQ-001-tc`）
+
+**模式 B · 实现认领**（claude_code 主导，`test_designed → in_progress`）
 
 - [ ] `status == test_designed`
 - [ ] `owner == unassigned`
 - [ ] `test_case_ref` 非空（TC 文档已存在于 `tasks/test-cases/`）
 - [ ] `depends_on` 中所有项已 `done`
-- [ ] 任务范围与自身当前上下文不冲突
 
-### 8.3 认领规则（Branch-as-Lock）
+两种模式均通过 §8.3 的 Claim PR auto-merge 机制执行互斥，防止两个同类 Agent 双认领。
 
-| 项目 | 内容 |
+### 8.3 认领规则（Claim PR auto-merge 作为互斥锁）
+
+**核心机制：git 的 merge 冲突检测即互斥锁。**
+
+两个 Agent 同时认领 REQ-001 时，都会提交修改同一行（`owner` 字段）的 Claim PR：
+- 先 merge 者赢，`owner` 写入 main
+- 后 merge 者触发行冲突 → auto-merge 失败 → Agent 感知任务已被认领 → 选其他任务
+
+| 步骤 | 操作 |
 |---|---|
-| 规则 | 认领必须通过创建工作分支 + 第一个 commit 原子完成，不得仅口头声明 |
-| 分支命名 | `feat/REQ-001-<short-description>`（branch 名即认领信号，全局可见）|
-| 第一个 commit | 只改 `tasks/features/REQ-xxx.md`：`owner` → 自身标识，`status` → `in_progress` |
-| 竞态解决 | 若两个 Agent 同时创建同名分支，后 push 的一方会因 non-fast-forward 失败，应选其他 `test_designed` 项重试 |
-| 好示例 | 分支 `feat/REQ-001-sse-error-handling`，首 commit message `claim: REQ-001` |
-| 坏示例 | Agent 开始写代码，但未创建分支也未更新需求状态 |
+| 1 | 创建 Claim 分支：TC 设计用 `claim/REQ-xxx-tc`；实现用 `claim/REQ-xxx` |
+| 2 | 单文件 commit：仅改 `tasks/features/REQ-xxx.md`；TC 设计 claim 只改 `owner → openai_codex`，实现 claim 改 `owner → claude_code` 且 `status → in_progress`；message：`claim: REQ-xxx` |
+| 3 | Push，立即开 **Claim PR**，标题：`claim: REQ-xxx`，启用 **auto-merge**（无需 human review）|
+| 4 | 检查 Claim PR 结果：merged → 任务归你；conflict/failed → 任务已被认领，删除分支，选其他任务 |
+| 5 | 认领成功后，按任务类型继续：TC 设计走 `test/REQ-xxx-tc-design`；实现走 `feat/REQ-xxx-<desc>` |
+
+| 好示例 | Claim PR 已 merge；TC 设计时 `owner: openai_codex` 在 main 上可见，或实现时 `owner: claude_code` 在 main 上可见 |
+| 坏示例 | 跳过 Claim PR 直接开始 TC 设计/实现，或同一 PR 混入真实实现代码（实现 PR 不能 auto-merge）|
+
+> **GitHub 配置要求**（见 ci-standard.md §Claim PR）：
+> Claim PR 标题匹配 `^claim: REQ-` 时允许 auto-merge，且 0 required reviews。
+> Implementation PR 需要 1 个 human approve。
+
+> **TC 设计完成后的回写规则**：
+> `openai_codex` 在设计 PR 中写入 `test_case_ref`、把 `status` 改为 `test_designed`，
+> 并把 `owner` 释放回 `unassigned`，供实现阶段继续认领。
 
 ### 8.4 放弃与释放
 
@@ -277,15 +313,21 @@ Agent 在认领需求前，必须依次确认：
 - 在 `Agent Notes` 中简述原因
 - 删除或关闭对应工作分支
 
-### 8.5 简单分工建议
+### 8.5 分工规则
 
-> 这是默认建议，不是硬性路由器；若需求本身另有指定，以需求项为准。
+> 以 Agent 各自 SOUL.md 的 Task Scope 定义为准，本表是摘要。
 
-| 范围 | 默认优先 Agent |
-|---|---|
-| 后端逻辑 / API / 队列 / 状态机 | `openai_codex` |
-| 前端页面 / 交互 / 组件流转 | `claude_code` |
-| 测试 / 文档 / 跨端收尾 | 任一可认领，按当前负载决定 |
+| scope 字段 | 主责 Agent | 依据 |
+|---|---|---|
+| `frontend` | `claude_code` | SOUL.md：前端实现为主要能力 |
+| `backend` | `claude_code` | SOUL.md：后端特性开发为主要能力 |
+| `fullstack` | `claude_code` | SOUL.md：跨端实现 |
+| `tests` | `claude_code` 或 `openai_codex` | TC 设计由 openai_codex 主导；测试代码实现由 claude_code |
+| `docs` | `openai_codex` | SOUL.md：文档/一致性审查为主要能力 |
+
+> `openai_codex` **不认领** `scope: backend/frontend/fullstack` 的实现任务——
+> 其职责是 TC 设计、代码审查、Bug 上报，不是生产代码实现。
+> 详见 `agents/openai-codex/SOUL.md`。
 
 ---
 
@@ -397,3 +439,6 @@ blocked: [原因描述，例如"等待 PM 确认 API 字段设计" 或 "REQ-005 
 | 0.1 | 2026-03-12 | 初始版本；定义需求目录、状态机、优先级和 Claude Code / OpenAI Codex 双 Agent 认领规则 |
 | 0.2 | 2026-03-12 | 新增 `test_designed` 状态，强制测试先行；引入 `test_case_ref` 字段；删除 `blocked_by`，统一使用 `depends_on`；目录重设计（features/bugs/test-cases/archive/done+cancelled）；认领机制改为 Branch-as-Lock；更新同步规则与审查清单 |
 | 0.3 | 2026-03-12 | 根目录由 `requirements/` 重命名为 `tasks/`：Bug 在语义上是工作项而非规格说明，`tasks/` 对 Agent 更自然；子目录结构不变 |
+| 0.4 | 2026-03-12 | Branch-as-Lock 升级为 PR-as-Claim；修正 §8.5 分工表（openai_codex 不认领实现任务，与 SOUL.md 对齐）|
+| 0.5 | 2026-03-12 | PR-as-Claim 升级为 Claim PR auto-merge 互斥锁：git merge 冲突检测作为真正的互斥机制；Claim 分支与实现分支分离；GitHub 配置要求记录于 ci-standard.md |
+| 0.6 | 2026-03-12 | §2.3 状态数量从 6 修正为 7（补充 test_designed）；§8.2 拆分为模式 A（TC 设计认领，openai_codex）和模式 B（实现认领，claude_code），各自前置条件独立，均使用 Claim PR 互斥机制 |
