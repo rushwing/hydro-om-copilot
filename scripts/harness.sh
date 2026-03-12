@@ -70,11 +70,15 @@ check_depends() {
     elif [[ "$dep" == BUG-* ]]; then
       dep_file="${REPO_ROOT}/tasks/bugs/${dep}.md"
     fi
-    # 找不到文件 → 已归档/done，跳过
-    if [[ ! -f "${dep_file:-}" ]]; then continue; fi
+    # 文件不存在：未知 ID（typo 或 stale），视为阻塞而非自动放行
+    if [[ -z "${dep_file:-}" || ! -f "$dep_file" ]]; then
+      blocked_list="${blocked_list} ${dep}(not_found)"
+      continue
+    fi
     local dep_status=""
     dep_status=$(grep '^status:' "$dep_file" | awk '{print $2}' | tr -d '"')
-    if [[ "$dep_status" != "done" ]]; then
+    # REQ 终态为 done；BUG 终态为 closed（见 bug-standard.md §5.1）
+    if [[ "$dep_status" != "done" && "$dep_status" != "closed" ]]; then
       blocked_list="${blocked_list} ${dep}(${dep_status})"
     fi
   done < <(echo "$dep_raw" | tr ',\n' '\n')
