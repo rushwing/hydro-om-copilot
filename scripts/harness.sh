@@ -49,14 +49,18 @@ require() {
   command -v "$1" &>/dev/null || die "'$1' not found. $2"
 }
 
-# require_auto_merge — Claim PR mutex 依赖 GitHub auto-merge，运行前需验证已启用
-# 调用方：cmd_implement / cmd_tc_design / cmd_bugfix（所有使用 Claim PR 的流程）
-require_auto_merge() {
+# warn_auto_merge — 检查 GitHub auto-merge 是否启用，未启用时打印警告（不阻断执行）
+# Claim PR mutex 依赖 auto-merge；若未启用，Claim PR 需手动 merge，mutex 不完整。
+# 调用方：cmd_implement / cmd_tc_design / cmd_bugfix 标准及 Stacked 路径
+# Bundle 路径不使用 Claim PR，无需调用。
+warn_auto_merge() {
   local enabled=""
-  enabled=$(gh api repos/{owner}/{repo} --jq '.allow_auto_merge' 2>/dev/null) || \
-    die "无法查询 repo 配置（gh API 失败），请检查 gh 登录状态"
+  enabled=$(gh api repos/{owner}/{repo} --jq '.allow_auto_merge' 2>/dev/null) || {
+    warn "无法查询 repo auto-merge 配置（gh API 失败）；Claim PR 需手动 merge。"
+    return
+  }
   if [[ "$enabled" != "true" ]]; then
-    die "Claim PR mutex 需要 GitHub repo 启用 auto-merge，当前未启用。\n请到 Settings → General → Pull Requests → 勾选 'Allow auto-merge'，然后重试。\n（见 harness/ci-standard.md §Claim PR 配置）"
+    warn "GitHub repo 未启用 auto-merge（Settings → General → Allow auto-merge）。\nClaim PR 将不会自动合并，需人工 merge 后再继续。\n（见 harness/ci-standard.md §Claim PR 配置）"
   fi
 }
 
@@ -293,7 +297,7 @@ cmd_implement() {
   [[ "$req" == "--force" ]] && { force=1; req="${2:-}"; }
   [[ -n "$req" ]] || die "Usage: harness implement [--force] <REQ-xxx>\n  例：harness implement REQ-001"
   require claude "Install: https://claude.ai/code"
-  require_auto_merge
+  warn_auto_merge
 
   local req_file="${REPO_ROOT}/tasks/features/${req}.md"
   [[ -f "$req_file" ]] || die "${req_file} 不存在"
@@ -336,7 +340,7 @@ cmd_tc_design() {
   [[ "$req" == "--force" ]] && { force=1; req="${2:-}"; }
   [[ -n "$req" ]] || die "Usage: harness tc-design [--force] <REQ-xxx>\n  例：harness tc-design REQ-001"
   require codex "Install: npm install -g @openai/codex"
-  require_auto_merge
+  warn_auto_merge
 
   local req_file="${REPO_ROOT}/tasks/features/${req}.md"
   [[ -f "$req_file" ]] || die "${req_file} 不存在"
@@ -409,7 +413,8 @@ cmd_bugfix() {
   bug="${1:-}"
   [[ -n "$bug" ]] || die "Usage: harness bugfix [--force] [--stacked <base-branch>] [--bundle <req-branch>] <BUG-xxx>\n  例：harness bugfix BUG-001\n      harness bugfix --stacked feat/REQ-001-xxx BUG-001\n      harness bugfix --bundle  feat/REQ-001-xxx BUG-001"
   require claude "Install: https://claude.ai/code"
-  require_auto_merge
+  # Bundle 不使用 Claim PR mutex，无需检查 auto-merge
+  [[ -z "$bundle_branch" ]] && warn_auto_merge
 
   local bug_file="${REPO_ROOT}/tasks/bugs/${bug}.md"
   [[ -f "$bug_file" ]] || die "${bug_file} 不存在"
