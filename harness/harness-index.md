@@ -63,6 +63,7 @@ flowchart LR
 | 知识库入库 | [kb-ingestion-standard.md](kb-ingestion-standard.md) | ✅ active |
 | 代码审查 | [review-standard.md](review-standard.md) | 🔲 stub — 已知原则可参考，完整规则待补 |
 | CI / 质量门禁 | [ci-standard.md](ci-standard.md) | 🔲 stub — pre-commit 命令可用，GitHub Action 待接入 |
+| Agent CLI 调用模板 | [agent-cli-playbook.md](agent-cli-playbook.md) | ✅ active — 模板 A–I，覆盖 TC 设计、实现、Review、Bug 修复、Fix Review Comments |
 
 ---
 

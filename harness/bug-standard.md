@@ -71,6 +71,7 @@ tasks/archive/cancelled/    # 已标记 wont_fix 的 Bug
 | `related_req` | 关联需求编号列表，无则空数组 |
 | `related_tc` | 触发此 Bug 的测试用例，或回归时需新增的 TC |
 | `reported_by` | `human` / `ci` / `canary` / Agent 标识 |
+| `depends_on` | （可选）必须先合并的 REQ/BUG 编号列表，无则省略或空数组；用于 Serialize 策略，Agent 看到此字段时不认领 |
 
 ### 3.3 Bug 文档推荐结构
 
@@ -85,6 +86,7 @@ owner: unassigned
 related_req: []
 related_tc: []
 reported_by: human
+depends_on: []
 ---
 
 # 现象描述
@@ -162,7 +164,7 @@ open → confirmed → in_progress → fixed → regressing → closed
 ```
 
 - `open → confirmed`：能稳定复现，已确认是 Bug 而非设计如此
-- `confirmed → in_progress`：Agent 认领（Branch-as-Lock，见 §6）
+- `confirmed → in_progress`：Agent 认领（Claim PR mutex，见 §6）
 - `in_progress → fixed`：PR 已提，包含修复代码和回归 TC
 - `fixed → regressing`：PR 合并，CI 开始跑回归
 - `regressing → closed`：回归测试全通过
@@ -175,6 +177,17 @@ open → confirmed → in_progress → fixed → regressing → closed
 - 不允许 `fixed → closed`（必须经过 `regressing`，确保回归测试跑过）
 - 不允许 PR 中无回归 TC 而将状态推进到 `fixed`
 
+### 5.4 已知例外：Stacked PR 的 `confirmed → fixed` 直接推进
+
+当采用 Stacked PR 策略时（fix 分支从依赖分支切出），fix 分支上的 `BUG-xxx.md` 处于 `confirmed` 状态（依赖分支不含 Claim PR 写入 main 的 `in_progress` commit）。此时 fix PR 的最终 commit 将状态从 `confirmed` 直接改为 `fixed`，跳过 `in_progress` 中间态。
+
+这是允许的例外，原因：
+- 认领互斥已由 Claim PR 在 `main` 上完成（`in_progress` 记录存在于 `main`）
+- fix 分支上不重复写入 `in_progress` 是为了避免向他人持有的共享依赖分支写入（见 §6.2 Stacked PR 例外）
+- PR retarget 到 `main` 时，HITL reviewer 解决 `BUG-xxx.md` 的**一处**冲突（见 §6.2 Stacked PR 例外）：
+  `status`（`in_progress` vs `fixed`）→ 保留 `fixed`。
+  `owner` 不冲突：两侧均为 `claude_code`（main 来自 Claim PR，fix 分支来自最终 commit）。
+
 ---
 
 ## 6. Agent 认领规程
@@ -183,16 +196,64 @@ open → confirmed → in_progress → fixed → regressing → closed
 
 - [ ] `status == confirmed`
 - [ ] `owner == unassigned`
-- [ ] `related_req` 中涉及的 REQ 无正在进行的 `in_progress` 项（避免同时修改同一代码区域）
+- [ ] `related_req` 中涉及的 REQ 无正在进行的 `in_progress` 项（避免同时修改同一代码区域）；
+  **例外 A**：若采用 Stacked PR 策略（fix PR base 指向 REQ 分支），允许 related_req 处于 `in_progress`（见 agent-cli-playbook.md §Stacked PR）
+  **例外 B**：若采用 Bundle 策略（直接在 REQ 分支上修复），同样允许 related_req 处于 `in_progress`，因为修复由同一分支的 REQ Agent 持有（见 §6.2 Bundle 例外）
 
 ### 6.2 认领规则（仅 repo 内 Bug 适用）
+
+认领采用与 REQ 实现相同的 **Claim PR mutex**，分两阶段执行：
+
+**阶段一：Claim PR（获取锁）**
+
+| 项目 | 内容 |
+|---|---|
+| 分支命名 | `claim/BUG-001` |
+| commit 内容 | 只改 `tasks/bugs/BUG-xxx.md`：`owner` → 自身标识，`status` → `in_progress` |
+| commit message | `claim: BUG-001` |
+| PR 标题 | `claim: BUG-001` |
+| 合并方式 | 开 PR 后立即 `gh pr merge --auto --squash`，等待 CI 通过后自动合并 |
+| 竞态解决 | 若 PR 因冲突（另一 Agent 已 claim）合并失败 → 停止，不认领 |
+
+**阶段二：修复 PR（在 claim 合并后）**
 
 | 项目 | 内容 |
 |---|---|
 | 分支命名 | `fix/BUG-001-<short-description>` |
-| 第一个 commit | 只改 `tasks/bugs/BUG-xxx.md`：`owner` → 自身标识，`status` → `in_progress` |
-| commit message | `claim: BUG-001` |
-| 竞态解决 | 同 requirement-standard 的 Claim 机制；若只是普通 GitHub issue，则直接用 GitHub assignee / PR 处理，不在 repo 内 claim |
+| 基于 | `main`（标准）；Stacked PR 时见下方例外 |
+| 竞态保证 | Claim PR 已合并 = 锁已获取，直接开发，无需再次修改 BUG-xxx.md 的 owner/status |
+
+**例外一：Bundle（同一特性内的 Bug）**
+
+当 Bug 属于正在实现的同一特性、且修复应合入已有的 `feat/REQ-xxx` PR 时，**不使用 Claim PR mutex**，改为：
+
+1. `git checkout feat/REQ-xxx-...`
+2. 第一个 commit 只改 `tasks/bugs/BUG-xxx.md`：`owner` → 自身标识，`status` → `in_progress`，commit message `claim: BUG-001`
+3. 继续在同一分支上实现修复，最终 commit 将 status 改为 `fixed`
+4. 修复随 REQ PR 一起 review 和合并，不开独立 PR
+
+> 竞态说明：REQ 分支已被 REQ 的认领 Agent 持有，同一时间不会有其他 Agent 操作该分支，无需额外 mutex。
+
+**例外二：Stacked PR（fix 分支基于依赖分支）**
+
+Stacked PR 的 fix 分支从 `<stacked_base>` 切出。Claim PR 正常合并到 `main`，**不对 `<stacked_base>` 做任何写操作**（不 cherry-pick、不推送），因为该分支由 REQ Agent 持有。
+
+流程：
+
+1. 按标准流程完成 Claim PR（合并到 `main`）
+2. `git fetch origin && git checkout <stacked_base> && git checkout -b fix/BUG-001-<desc>`
+   — fix 分支上 `BUG-xxx.md` 此时显示 `status: confirmed`（来自依赖分支，非 `in_progress`），这是预期的
+3. 开发修复 + 回归测试
+4. 最终 commit：将 `BUG-xxx.md` 的 `status: confirmed → fixed`，`owner: unassigned → claude_code`（直接推进，跳过 `in_progress` 转换）
+5. 开 PR，base 指向 `<stacked_base>`
+
+> **retarget 时的冲突处理**：当 `<stacked_base>` merge 到 main 后，fix PR retarget 到 main，
+> `BUG-xxx.md` 会产生**一处**冲突：
+> - `status`：main 一侧为 `in_progress`（Claim PR 设置），fix 分支一侧为 `fixed` → 保留 **`fixed`**
+>
+> `owner` 不冲突：fix 分支的最终 commit 已将 `owner` 设为 `claude_code`，与 main 一侧相同，
+> git 3-way merge 会自动解决。
+> 这是 Stacked PR 拓扑的已知代价，优于向他人持有的共享分支写入提交。
 
 ### 6.3 修复完成要求
 
@@ -278,3 +339,6 @@ PR 必须同时包含：
 |---|---|---|
 | 0.1 | 2026-03-12 | 初始版本；定义 Bug 状态机、严重等级、Agent 认领规程、回归测试要求与关闭口径 |
 | 0.2 | 2026-03-12 | 目录路径由 `requirements/` 更新为 `tasks/` |
+| 0.3 | 2026-03-13 | §6.2 认领规则改为 Claim PR mutex 两阶段流程，与 requirement-standard 和 agent-cli-playbook 模板 C 保持一致 |
+| 0.4 | 2026-03-13 | §6.2 补充 Bundle 例外（claim commit 提交到 REQ 分支，无 Claim PR）和 Stacked PR 例外（不写共享分支；retarget 时 HITL 解决冲突保留 fixed）|
+| 0.5 | 2026-03-13 | §5.4 新增 Stacked PR confirmed→fixed 直接推进例外说明，与 §6.2 保持一致 |

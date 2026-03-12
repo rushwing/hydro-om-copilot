@@ -31,8 +31,13 @@ last_reviewed: 2026-03-12
 - [ ] 无遗留调试代码（`console.log`、`print`、`breakpoint()`）
 - [ ] 无硬编码密钥、测试凭证或生产配置
 - [ ] `tasks/features/REQ-xxx.md` 已更新为 `status: review`
+- [ ] 若本 PR 依赖另一个未合并 PR：PR description 中注明 `depends on #<N>`，并将 base branch 设为依赖 PR 的分支（Stacked PR），而非 `main`
 
 ### Review 关注点（openai_codex）
+
+**前置依赖检查（先于其他检查）**
+- [ ] 检查 PR description 是否标注 `depends on #<N>`；若有，先确认依赖 PR 是否已 merge 或已作为 base branch
+- [ ] 若 PR base branch 不是 `main`，理解这是 Stacked PR：只 review 相对于 base branch 的增量 diff，不对 base 部分提 blocking comment
 
 **契约一致性**
 - [ ] 实现与 REQ-xxx.md `Acceptance Criteria` 逐条对应

@@ -144,15 +144,37 @@ git checkout -b feat/REQ-xxx-<short-description>
 
 ### Phase 4 · Bug 修复（Bug Fix & Regression）
 
-```
-# 认领 BUG：
-git checkout -b fix/BUG-xxx-<short-description>
-# 第一个 commit：claim: BUG-xxx，更新 status=in_progress, owner=claude_code
+> 完整规程见 [harness/bug-standard.md §6](../../harness/bug-standard.md)。以下为关键步骤摘要。
 
-# 修复要求（见 bug-standard.md §6.3）：
-# - 修复代码
-# - 回归测试用例（新增或更新 TC）
-# - 填写根因分析和修复方案
+```bash
+# --- 标准流程（独立 fix PR）---
+
+# 1. Claim PR mutex（先于任何修复工作）
+git checkout main && git pull
+git checkout -b claim/BUG-xxx
+# 只改 tasks/bugs/BUG-xxx.md：status=in_progress, owner=claude_code
+git commit -m "claim: BUG-xxx"
+git push -u origin claim/BUG-xxx
+gh pr create --title "claim: BUG-xxx" --body ""
+gh pr merge --auto --squash
+# 等待合并；若冲突 → 另一 Agent 已认领，换任务
+
+# 2. Claim 合并后，开修复分支
+git checkout main && git pull
+git checkout -b fix/BUG-xxx-<short-description>
+
+# 3. 实现修复 + 回归测试（见 bug-standard.md §6.3）
+# 4. 最终 commit：status=fixed，填写根因分析和修复方案
+# 5. bash scripts/local/test.sh 必须通过
+# 6. 开 PR
+
+# --- Bundle 模式（同特性 Bug，合入已有 REQ PR）---
+# 见 bug-standard.md §6.2 Bundle 例外：claim commit 提交到 REQ 分支，无 Claim PR
+# 使用：harness bugfix --bundle feat/REQ-xxx-... BUG-xxx
+
+# --- Stacked PR 模式（紧急，fix PR base 指向依赖分支）---
+# 见 bug-standard.md §6.2 Stacked PR 例外：不写依赖分支；confirmed→fixed 直接推进
+# 使用：harness bugfix --stacked feat/REQ-xxx-... BUG-xxx
 ```
 
 ---
