@@ -609,9 +609,9 @@ cd "$REPO_ROOT"
 case "${1:-}" in
   review)      cmd_review      "${2:-}" ;;
   fix-review)  cmd_fix_review  "${2:-}" ;;
-  implement)   cmd_implement   "${2:-}" ;;
-  tc-design)   cmd_tc_design   "${2:-}" ;;
-  bugfix)      cmd_bugfix      "${2:-}" ;;
+  implement)   cmd_implement   "${@:2}" ;;
+  tc-design)   cmd_tc_design   "${@:2}" ;;
+  bugfix)      cmd_bugfix      "${@:2}" ;;
   status)      cmd_status ;;
   -h|--help|help|"") usage ;;
   *) die "未知命令: $1\n$(usage)" ;;

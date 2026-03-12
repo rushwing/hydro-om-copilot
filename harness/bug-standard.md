@@ -190,12 +190,26 @@ open → confirmed → in_progress → fixed → regressing → closed
 
 ### 6.2 认领规则（仅 repo 内 Bug 适用）
 
+认领采用与 REQ 实现相同的 **Claim PR mutex**，分两阶段执行：
+
+**阶段一：Claim PR（获取锁）**
+
+| 项目 | 内容 |
+|---|---|
+| 分支命名 | `claim/BUG-001` |
+| commit 内容 | 只改 `tasks/bugs/BUG-xxx.md`：`owner` → 自身标识，`status` → `in_progress` |
+| commit message | `claim: BUG-001` |
+| PR 标题 | `claim: BUG-001` |
+| 合并方式 | 开 PR 后立即 `gh pr merge --auto --squash`，等待 CI 通过后自动合并 |
+| 竞态解决 | 若 PR 因冲突（另一 Agent 已 claim）合并失败 → 停止，不认领 |
+
+**阶段二：修复 PR（在 claim 合并后）**
+
 | 项目 | 内容 |
 |---|---|
 | 分支命名 | `fix/BUG-001-<short-description>` |
-| 第一个 commit | 只改 `tasks/bugs/BUG-xxx.md`：`owner` → 自身标识，`status` → `in_progress` |
-| commit message | `claim: BUG-001` |
-| 竞态解决 | 同 requirement-standard 的 Claim 机制；若只是普通 GitHub issue，则直接用 GitHub assignee / PR 处理，不在 repo 内 claim |
+| 基于 | `main`（或 Stacked PR 场景下的依赖分支） |
+| 竞态保证 | Claim PR 已合并 = 锁已获取，直接开发，无需再次修改 BUG-xxx.md 的 owner/status |
 
 ### 6.3 修复完成要求
 
@@ -281,3 +295,4 @@ PR 必须同时包含：
 |---|---|---|
 | 0.1 | 2026-03-12 | 初始版本；定义 Bug 状态机、严重等级、Agent 认领规程、回归测试要求与关闭口径 |
 | 0.2 | 2026-03-12 | 目录路径由 `requirements/` 更新为 `tasks/` |
+| 0.3 | 2026-03-13 | §6.2 认领规则改为 Claim PR mutex 两阶段流程，与 requirement-standard 和 agent-cli-playbook 模板 C 保持一致 |
