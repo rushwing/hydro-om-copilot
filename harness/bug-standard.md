@@ -224,13 +224,21 @@ open → confirmed → in_progress → fixed → regressing → closed
 
 **例外二：Stacked PR（fix 分支基于依赖分支）**
 
-Stacked PR 的 fix 分支从 `<stacked_base>` 切出，但 Claim PR 合并到 `main`，导致 fix 分支上的 `BUG-xxx.md` 缺少 `in_progress` 提交。为保证状态连续性：
+Stacked PR 的 fix 分支从 `<stacked_base>` 切出。Claim PR 正常合并到 `main`，**不对 `<stacked_base>` 做任何写操作**（不 cherry-pick、不推送），因为该分支由 REQ Agent 持有。
+
+流程：
 
 1. 按标准流程完成 Claim PR（合并到 `main`）
-2. 记录 claim commit SHA：`claim_sha=$(git rev-parse main)`
-3. `git checkout <stacked_base> && git cherry-pick ${claim_sha}`（将 in_progress 状态同步到依赖分支）
-4. 在 `<stacked_base>` 上创建 `fix/BUG-001-<desc>` 分支并开发修复
-5. fix PR 的最终 commit 将 status 改为 `fixed`（从 `in_progress` 推进，历史连续）
+2. `git fetch origin && git checkout <stacked_base> && git checkout -b fix/BUG-001-<desc>`
+   — fix 分支上 `BUG-xxx.md` 此时显示 `status: confirmed`（来自依赖分支，非 `in_progress`），这是预期的
+3. 开发修复 + 回归测试
+4. 最终 commit：将 `BUG-xxx.md` 的 `status` 从 `confirmed` 改为 `fixed`（直接推进，跳过 `in_progress` 转换）
+5. 开 PR，base 指向 `<stacked_base>`
+
+> **retarget 时的冲突处理**：当 `<stacked_base>` merge 到 main 后，fix PR retarget 到 main，
+> `BUG-xxx.md` 会产生一行冲突（main 一侧为 `in_progress`，fix 分支一侧为 `fixed`）。
+> HITL reviewer 解决冲突时保留 `status: fixed` 即可。这是 Stacked PR 拓扑的已知代价，
+> 优于向他人持有的共享分支写入提交。
 
 ### 6.3 修复完成要求
 
@@ -317,4 +325,4 @@ PR 必须同时包含：
 | 0.1 | 2026-03-12 | 初始版本；定义 Bug 状态机、严重等级、Agent 认领规程、回归测试要求与关闭口径 |
 | 0.2 | 2026-03-12 | 目录路径由 `requirements/` 更新为 `tasks/` |
 | 0.3 | 2026-03-13 | §6.2 认领规则改为 Claim PR mutex 两阶段流程，与 requirement-standard 和 agent-cli-playbook 模板 C 保持一致 |
-| 0.4 | 2026-03-13 | §6.2 补充 Bundle 例外（claim commit 提交到 REQ 分支，无 Claim PR）和 Stacked PR 例外（cherry-pick claim commit 到依赖分支保证状态连续性）|
+| 0.4 | 2026-03-13 | §6.2 补充 Bundle 例外（claim commit 提交到 REQ 分支，无 Claim PR）和 Stacked PR 例外（不写共享分支；retarget 时 HITL 解决冲突保留 fixed）|

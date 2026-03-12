@@ -242,22 +242,38 @@ Do NOT merge the PR — HITL merge only.
 ### Stacked PR 操作流程
 
 ```bash
-# 1. 在依赖 PR 的分支上开发
+# 1. Claim PR mutex（先于任何修复工作）
+git checkout main && git pull
+git checkout -b claim/BUG-001
+# 只改 tasks/bugs/BUG-001.md：status=in_progress, owner=claude_code
+git add tasks/bugs/BUG-001.md
+git commit -m "claim: BUG-001"
+git push -u origin claim/BUG-001
+gh pr create --title "claim: BUG-001" --body ""
+gh pr merge --auto --squash
+# 等待 claim PR 合并到 main；若冲突 → 另一 Agent 已认领，停止
+
+# 2. claim 合并后，切 fix 分支（从依赖分支，不改动依赖分支本身）
+git fetch origin
 git checkout feat/REQ-001-xxx
 git checkout -b fix/BUG-001-xxx
+# 注意：fix 分支上 BUG-001.md 显示 confirmed（来自依赖分支），这是预期的
 
-# 2. 开发并提交修复
+# 3. 开发并提交修复
 
-# 3. PR base 设为依赖分支（不是 main）
+# 4. 最终 commit 更新 BUG-001.md：status=fixed（从 confirmed 直接推进）
+#    retarget 到 main 时 HITL reviewer 解决 BUG-001.md 的冲突（main=in_progress，fix=fixed），保留 fixed
+
+# 5. PR base 设为依赖分支（不是 main）
 gh pr create \
   --base feat/REQ-001-xxx \
   --title "fix: BUG-001 ..." \
   --body "depends on #<REQ-001-PR-number>"
 
-# 4. REQ-001 PR merge 后：
+# 6. REQ-001 PR merge 后：
 #    - 若 REQ-001 分支被删除，GitHub 会自动将 BUG-001 PR 的 base 更新为 main
 #    - 若分支未删除，需手动执行：gh pr edit <BUG-001-PR> --base main
-# 5. BUG-001 PR 正常走 review → HITL merge
+# 7. BUG-001 PR 正常走 review → HITL merge（此时解决 BUG-001.md 冲突，保留 status=fixed）
 ```
 
 > Reviewer（openai_codex）review Stacked PR 时，只需看相对于 base branch 的增量 diff，

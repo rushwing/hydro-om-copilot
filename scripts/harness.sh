@@ -444,16 +444,16 @@ BUNDLE MODE — no separate Claim PR (the REQ branch is already locked; see bug-
   local pr_topology_instruction=""
   if [[ -n "$stacked_base" ]]; then
     pr_topology_instruction="STACKED PR MODE: base branch is \`${stacked_base}\` (not main).
-   See bug-standard.md §6.2 Stacked PR exception for the state-continuity requirement.
+   Do NOT modify or push to ${stacked_base} — it is owned by another agent.
 2. Only after claim merges to main:
-   a. Record the claim commit SHA: claim_sha=\$(git rev-parse main)
-   b. Cherry-pick it onto the dependency branch to sync in_progress state:
-      git checkout ${stacked_base} && git cherry-pick \${claim_sha}
-      git push origin ${stacked_base}
-   c. Create the fix branch from the updated dependency branch:
-      git checkout -b fix/${bug}-<short-desc>
+   git fetch origin
+   git checkout ${stacked_base}
+   git checkout -b fix/${bug}-<short-desc>
+   (BUG-xxx.md will show status=confirmed on this branch — that is expected)
 8. Open PR with --base ${stacked_base}:
    gh pr create --base ${stacked_base} --title 'fix: ${bug} ...' --body 'depends on #<REQ-PR>'
+   Final commit must set status=fixed in tasks/bugs/${bug}.md (from confirmed, skipping in_progress).
+   On retarget to main, HITL reviewer resolves the one-line BUG-xxx.md conflict by keeping status=fixed.
    (When ${stacked_base} merges to main, GitHub auto-retargets this PR to main if branch is deleted)"
   else
     pr_topology_instruction="2. Only after claim merges: create branch fix/${bug}-<short-desc>
