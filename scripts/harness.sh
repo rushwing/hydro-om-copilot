@@ -25,7 +25,11 @@ set -euo pipefail
 trap 'echo "\n[harness] 错误：脚本在第 $LINENO 行退出" >&2' ERR
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CLAUDE_APPROVAL="${CLAUDE_APPROVAL:-}"        # 留空则交互式
+# harness.sh 是用户主动触发的，统一跳过逐步权限确认
+# 若需要交互式确认，直接在终端运行 claude（不走 harness.sh）
+CLAUDE_CMD=(claude --dangerously-skip-permissions -p)
+# CLAUDE_APPROVAL 可覆盖（如 CI 注入自定义 flag）
+if [[ -n "${CLAUDE_APPROVAL:-}" ]]; then CLAUDE_CMD=(claude "$CLAUDE_APPROVAL" -p); fi
 # zsh 数组：避免变量含空格时被当成单一命令名执行
 # review 需要调 gh（网络），--dangerously-bypass-approvals-and-sandbox 跳过 sandbox + 审批
 CODEX_REVIEW=(codex exec --dangerously-bypass-approvals-and-sandbox)
@@ -158,11 +162,7 @@ cmd_implement() {
   fi
 
   info "触发 Claude Code 认领并实现 ${req} ..."
-  local tmp_out session_log="${REPO_ROOT}/.harness_sessions"
-  tmp_out=$(mktemp)
-  local claude_cmd=(claude -p)
-  if [[ -n "$CLAUDE_APPROVAL" ]]; then claude_cmd=(claude "$CLAUDE_APPROVAL" -p); fi
-  "${claude_cmd[@]}" "
+  "${CLAUDE_CMD[@]}" "
 Read agents/claude-code/SOUL.md.
 
 Your task: implement ${req}.
@@ -174,14 +174,7 @@ Follow SOUL.md §SOP Phase 1 (Claim PR) then Phase 2 (Implementation) then Phase
 5. Write tests first, then implementation
 6. bash scripts/local/test.sh must pass before opening PR
 7. Set ${req}.md status=review and open PR (Draft until tests pass)
-" 2>&1 | tee "$tmp_out"
-  local session_id=""
-  session_id=$(grep -E 'session[- ]id[: ]+' "$tmp_out" | grep -oE '[0-9a-f-]{36}' | head -1) || true || true
-  if [[ -n "$session_id" ]]; then
-    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  implement  ${req}  ${session_id}" >> "$session_log"
-    ok "Session → .harness_sessions"
-  fi
-  rm -f "$tmp_out"
+"
 }
 
 cmd_tc_design() {
@@ -262,11 +255,8 @@ cmd_bugfix() {
   fi
 
   info "触发 Claude Code 认领并修复 ${bug} ..."
-  local tmp_out session_log="${REPO_ROOT}/.harness_sessions"
-  tmp_out=$(mktemp)
-  local claude_cmd=(claude -p)
-  if [[ -n "$CLAUDE_APPROVAL" ]]; then claude_cmd=(claude "$CLAUDE_APPROVAL" -p); fi
-  "${claude_cmd[@]}" "
+  info "触发 Claude Code 认领并修复 ${bug} ..."
+  "${CLAUDE_CMD[@]}" "
 Read agents/claude-code/SOUL.md and harness/bug-standard.md.
 
 Your task: fix ${bug}.
@@ -278,14 +268,7 @@ Your task: fix ${bug}.
 6. Fill in 根因分析 and 修复方案 in ${bug}.md
 7. bash scripts/local/test.sh must pass before opening PR
 8. Open PR, then set status=fixed in ${bug}.md (fixed = PR exists, per bug-standard.md §5.1)
-" 2>&1 | tee "$tmp_out"
-  local session_id
-  session_id=$(grep -E 'session[- ]id[: ]+' "$tmp_out" | grep -oE '[0-9a-f-]{36}' | head -1) || true
-  if [[ -n "$session_id" ]]; then
-    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  bugfix     ${bug}  ${session_id}" >> "$session_log"
-    ok "Session → .harness_sessions"
-  fi
-  rm -f "$tmp_out"
+"
 }
 
 cmd_fix_review() {
@@ -322,12 +305,7 @@ cmd_fix_review() {
 
   info "触发 Claude Code 修复 PR #${pr} review findings..."
 
-  # fix-review 是用户主动触发的自动修复，内置跳过权限确认
-  # （避免 claude -p 在脚本子进程里块缓冲导致权限提示不可见）
-  local claude_cmd=(claude --dangerously-skip-permissions -p)
-  if [[ -n "$CLAUDE_APPROVAL" ]]; then claude_cmd=(claude "$CLAUDE_APPROVAL" -p); fi
-
-  "${claude_cmd[@]}" "
+  "${CLAUDE_CMD[@]}" "
 Read agents/claude-code/SOUL.md and harness/review-standard.md.
 
 ## Pre-fetched context for PR #${pr} — use directly, do NOT re-fetch
