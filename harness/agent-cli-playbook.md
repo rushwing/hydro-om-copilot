@@ -2,7 +2,7 @@
 harness_id: CLI-PB-001
 component: agent operations / CLI invocation
 owner: Engineering
-version: 0.1
+version: 0.4
 status: active
 last_reviewed: 2026-03-12
 ---
@@ -146,17 +146,43 @@ Do NOT merge. HITL merge only.
 
 ### 模板 G · Bug 上报
 
+> **默认路径是 GitHub issue**（见 bug-standard.md §事实源边界）。
+> 只有需要长期跟踪或进入 Agent 修复队列时，才提升为 repo 文件（模板 G-Promote）。
+
+**G-1 · 默认路径（GitHub issue）**
+
 ```bash
-codex exec --full-auto "
+# network 访问，需要 --dangerously-bypass-approvals-and-sandbox
+codex exec --dangerously-bypass-approvals-and-sandbox "
 Read agents/openai-codex/SOUL.md and harness/bug-standard.md.
 A potential bug was observed: <description of observed behavior>.
 
 1. Determine if this is a genuine bug (vs design-as-intended)
-2. If confirmed: create tasks/bugs/BUG-<next-id>.md following bug-standard.md §3.2 template
-   - status: open (not confirmed yet — needs reproduction)
+2. If confirmed: open a GitHub issue (default — see bug-standard.md §事实源边界):
+   gh issue create \
+     --title '<severity>: <short title>' \
+     --body $'## 现象\n<description>\n\n## 预期行为\n<expected>\n\n## 复现步骤\n<steps>\n\n## Severity\n<P1/P2/P3 per bug-standard.md §4>'
+3. Do NOT create tasks/bugs/ files unless explicitly asked to promote to the repair queue
+4. Do not claim the fix
+"
+```
+
+**G-Promote · 提升为 repo Bug（长期跟踪 / Agent 修复队列）**
+
+```bash
+codex exec --dangerously-bypass-approvals-and-sandbox "
+Read agents/openai-codex/SOUL.md and harness/bug-standard.md.
+Promote GitHub issue #<N> (or observed bug: <description>) to a repo bug work item.
+
+1. Determine the next BUG-xxx id (scan tasks/bugs/ for highest existing id)
+2. Create branch: bug/BUG-<next-id>-<short-desc>
+3. Create tasks/bugs/BUG-<next-id>.md following bug-standard.md §3.2 template:
+   - status: open
    - severity: assess per §4
    - Fill 现象描述, 预期行为, 复现步骤
-3. Do not claim the fix — leave owner: unassigned
+   - If promoting from a GitHub issue: add issue URL to 现象描述
+4. Open PR (requires HITL review — do NOT auto-merge)
+5. Do not claim the fix — leave owner: unassigned
 "
 ```
 
@@ -289,7 +315,8 @@ gh pr create \
 | 场景 | 建议模式 |
 |---|---|
 | TC 设计（Claim PR mutex 需要 git push + gh）| `codex exec --dangerously-bypass-approvals-and-sandbox` |
-| Bug 上报（只写文件，无网络操作）| `codex exec --full-auto` |
+| Bug 上报（默认 GitHub issue，需要 gh）| `codex exec --dangerously-bypass-approvals-and-sandbox` |
+| Bug 提升为 repo 文件（需要 git push + gh）| `codex exec --dangerously-bypass-approvals-and-sandbox` |
 | Bug 修复（harness bugfix）| `claude -p`（由 harness.sh 调用 Claude Code）|
 | Review / 需要 gh 网络访问 | `codex exec --dangerously-bypass-approvals-and-sandbox` |
 | Claude Code 非交互 | `claude -p "..."` |
@@ -306,3 +333,4 @@ gh pr create \
 | 0.1 | 2026-03-12 | 初始版本；收录 A–H 八个常用模板，覆盖 TC 设计、实现认领、Bug 修复、PR Review、一致性审查 |
 | 0.2 | 2026-03-13 | 修正 codex CLI 标志：`-a never -s danger-full-access` → `--dangerously-bypass-approvals-and-sandbox`；更新注意事项表格 |
 | 0.3 | 2026-03-13 | 新增模板 I（Fix Review Comments）；fix-review 命令加入 harness.sh 和 Agent Loop 示例 |
+| 0.4 | 2026-03-13 | 模板 G 改为 GitHub-first：默认开 GitHub issue（G-1），提升为 repo 文件移至 G-Promote；更新注意事项表格 |
