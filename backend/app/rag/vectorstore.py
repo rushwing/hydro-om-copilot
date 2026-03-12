@@ -11,7 +11,7 @@ from app.config import settings
 
 
 def _build_embeddings():
-    from langchain_community.embeddings import HuggingFaceEmbeddings
+    from langchain_huggingface import HuggingFaceEmbeddings
 
     return HuggingFaceEmbeddings(
         model_name=settings.embedding_model,

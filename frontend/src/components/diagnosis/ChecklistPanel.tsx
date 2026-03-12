@@ -1,23 +1,69 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { CheckStep } from "@/types/diagnosis";
+
+// ── Persistence ───────────────────────────────────────────────────────────────
+
+const CHECKLIST_KEY = "hydro_om_checklist_states";
+
+function loadChecklist(sessionId: string): Set<number> {
+  try {
+    const all = JSON.parse(localStorage.getItem(CHECKLIST_KEY) ?? "{}") as Record<string, number[]>;
+    const arr = all[sessionId];
+    return Array.isArray(arr) ? new Set<number>(arr) : new Set<number>();
+  } catch {
+    return new Set<number>();
+  }
+}
+
+function saveChecklist(sessionId: string, checked: Set<number>): void {
+  try {
+    const all = JSON.parse(localStorage.getItem(CHECKLIST_KEY) ?? "{}") as Record<string, number[]>;
+    all[sessionId] = [...checked];
+    localStorage.setItem(CHECKLIST_KEY, JSON.stringify(all));
+  } catch {
+    // ignore
+  }
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 interface ChecklistPanelProps {
   steps: CheckStep[];
+  sessionId?: string;
+  onAllChecked?: (v: boolean) => void;
+  onCheckedChange?: (checked: Set<number>) => void;
 }
 
-export function ChecklistPanel({ steps }: ChecklistPanelProps) {
-  const [checked, setChecked] = useState<Set<number>>(new Set());
+export function ChecklistPanel({ steps, sessionId, onAllChecked, onCheckedChange }: ChecklistPanelProps) {
+  const [checked, setChecked] = useState<Set<number>>(() =>
+    sessionId ? loadChecklist(sessionId) : new Set(),
+  );
+
+  // Re-initialize when sessionId changes (new result)
+  useEffect(() => {
+    setChecked(sessionId ? loadChecklist(sessionId) : new Set());
+  }, [sessionId]);
 
   const toggle = (step: number) =>
     setChecked((prev) => {
       const next = new Set(prev);
       if (next.has(step)) { next.delete(step); } else { next.add(step); }
+      if (sessionId) saveChecklist(sessionId, next);
       return next;
     });
 
   const completedCount = checked.size;
   const totalCount = steps.length;
-  const completionPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+  const allChecked = totalCount === 0 || completedCount === totalCount;
+  const completionPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 100;
+
+  useEffect(() => {
+    onAllChecked?.(allChecked);
+  }, [allChecked, onAllChecked]);
+
+  useEffect(() => {
+    onCheckedChange?.(checked);
+  }, [checked, onCheckedChange]);
 
   return (
     <div className="rounded-lg border border-surface-border bg-surface-card overflow-hidden">

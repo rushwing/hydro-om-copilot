@@ -95,8 +95,13 @@ class AutoDiagnosisService:
             )
         return already
 
-    async def stop(self) -> bool:
-        """Stop polling only; worker continues until current diagnosis finishes."""
+    async def stop(self) -> dict:
+        """Stop polling and discard all queued (unstarted) items.
+
+        Returns a snapshot of dropped queue entries so the caller can archive
+        them as unprocessed faults.  The in-flight diagnosis (_current) is
+        allowed to finish normally.
+        """
         was_running = self.running
         if self._polling_task and not self._polling_task.done():
             self._polling_task.cancel()
@@ -105,8 +110,25 @@ class AutoDiagnosisService:
             except asyncio.CancelledError:
                 pass
             self._polling_task = None
-            _logger.info("AutoDiagnosisService polling stopped (worker continues)")
-        return was_running
+
+        # Atomically drain the queue before the worker can pop more items.
+        dropped_entries = list(self._pending)
+        self._pending.clear()
+
+        dropped = [
+            {
+                "unit_id": e.summary.unit_id,
+                "fault_types": e.summary.fault_types,
+                "symptom_preview": e.summary.symptom_text[:100],
+                "queued_at": e.queued_at,
+            }
+            for e in dropped_entries
+        ]
+        _logger.info(
+            "AutoDiagnosisService polling stopped | dropped=%d queued items",
+            len(dropped),
+        )
+        return {"was_running": was_running, "dropped": dropped}
 
     def enqueue(self, summary: FaultSummary) -> None:
         """Add a FaultSummary to the LIFO queue, recording the actual enqueue time."""
@@ -174,6 +196,11 @@ class AutoDiagnosisService:
             "epoch_elapsed_s": elapsed,
             "epoch_phase": epoch_phase,
         }
+
+    def reset_cooldowns(self) -> None:
+        """Reset diagnosis cooldown for all monitored units."""
+        for uid in _MONITORED_UNITS:
+            self._agg.reset_cooldown(uid)
 
     async def drain(self) -> None:
         """Cancel worker and wait for it to exit (for shutdown)."""
