@@ -27,9 +27,9 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CLAUDE_APPROVAL="${CLAUDE_APPROVAL:-}"        # 留空则交互式
 # zsh 数组：避免变量含空格时被当成单一命令名执行
 # review 需要调 gh（网络），--dangerously-bypass-approvals-and-sandbox 跳过 sandbox + 审批
-CODEX_REVIEW=(codex exec --dangerously-bypass-approvals-and-sandbox)
+CODEX_REVIEW=(codex exec --dangerously-bypass-approvals-and-sandbox --disable websocket)
 # 其他任务（tc-design 等）只需写文件，workspace-write 足够
-CODEX_EXEC=(codex exec --full-auto)
+CODEX_EXEC=(codex exec --full-auto --disable websocket)
 
 # ── 颜色 ──────────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
@@ -253,8 +253,9 @@ Your task: fix ${bug}.
 3. First commit: claim only — status=in_progress, owner=claude_code in ${bug}.md (message: 'claim: ${bug}')
 4. Fix the bug
 5. Add regression test (required per bug-standard.md §7)
-6. Fill in 根因分析 and 修复方案 in ${bug}.md, set status=fixed
+6. Fill in 根因分析 and 修复方案 in ${bug}.md
 7. bash scripts/local/test.sh must pass before opening PR
+8. Open PR, then set status=fixed in ${bug}.md (fixed = PR exists, per bug-standard.md §5.1)
 " 2>&1 | tee "$tmp_out"
   local session_id
   session_id=$(grep -E 'session[- ]id[: ]+' "$tmp_out" | grep -oE '[0-9a-f-]{36}' | head -1) || true

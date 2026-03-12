@@ -71,6 +71,7 @@ tasks/archive/cancelled/    # 已标记 wont_fix 的 Bug
 | `related_req` | 关联需求编号列表，无则空数组 |
 | `related_tc` | 触发此 Bug 的测试用例，或回归时需新增的 TC |
 | `reported_by` | `human` / `ci` / `canary` / Agent 标识 |
+| `depends_on` | （可选）必须先合并的 REQ/BUG 编号列表，无则省略或空数组；用于 Serialize 策略，Agent 看到此字段时不认领 |
 
 ### 3.3 Bug 文档推荐结构
 
@@ -85,6 +86,7 @@ owner: unassigned
 related_req: []
 related_tc: []
 reported_by: human
+depends_on: []
 ---
 
 # 现象描述

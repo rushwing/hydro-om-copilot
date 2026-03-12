@@ -189,7 +189,7 @@ Do not modify frozen files (list in CLAUDE.md §架构约束).
 | 场景 | 策略 | 操作 |
 |---|---|---|
 | 实现 REQ 途中发现 bug（同属一个特性） | **Bundle** — 合并进同一 PR | 直接在 `feat/REQ-xxx` 分支修复，不开独立 PR |
-| Bug 依赖某 REQ，但可等 HITL review 结束 | **Serialize** — 任务级 `depends_on` | BUG-xxx.md 中写 `depends_on: [REQ-xxx]`，等 REQ done 后再认领 |
+| Bug 依赖某 REQ，但可等 HITL review 结束 | **Serialize** — 人工跟踪依赖 | 在 BUG-xxx.md `Agent Notes` 中注明"等待 REQ-xxx 合并后再认领"，保持 `status: confirmed, owner: unassigned` |
 | Bug 必须先于依赖 PR merge（紧急/reviewer 发现） | **Stacked PR** — PR base 指向依赖分支 | 见下方命令 |
 
 ### Stacked PR 操作流程
@@ -207,7 +207,9 @@ gh pr create \
   --title "fix: BUG-001 ..." \
   --body "depends on #<REQ-001-PR-number>"
 
-# 4. REQ-001 PR merge 进 main 后，GitHub 自动更新 BUG-001 PR 的 base 为 main
+# 4. REQ-001 PR merge 后：
+#    - 若 REQ-001 分支被删除，GitHub 会自动将 BUG-001 PR 的 base 更新为 main
+#    - 若分支未删除，需手动执行：gh pr edit <BUG-001-PR> --base main
 # 5. BUG-001 PR 正常走 review → HITL merge
 ```
 
