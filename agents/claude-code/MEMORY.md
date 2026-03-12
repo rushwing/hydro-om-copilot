@@ -1,62 +1,59 @@
 ---
 agent_id: claude_code
-type: memory
+type: memory-index
+budget: 100 lines max (enforce on every write)
 last_updated: 2026-03-12
 ---
 
-# Claude Code — Project Memory
+# Claude Code — Memory Index
 
-> 记录重大交付、架构决策和经验教训。
-> 新会话启动时读此文件，避免重复犯错，继承项目智慧。
-> 更新规则：每次 Delivery（PR merge）后，将值得记录的内容追加到对应章节。
-
----
-
-## Significant Deliveries
-
-<!-- 格式：
-### REQ-xxx · [标题] · YYYY-MM-DD
-简述：做了什么
-关键决策：为什么这样做
--->
-
-_（暂无记录，首次交付后填入）_
+> **读取规则**：每次会话读 Gotchas（全部）+ Lessons/Deliveries 的标题行。
+> 只有当标题与当前任务相关时，才读 `→ detail` 链接的完整文件。
+> 超过 100 行时，将最久未引用的 Lessons 移至 `memories/archive/`。
 
 ---
 
-## Architecture Decisions
+## Gotchas
+> 每次开发都可能踩的项目专属陷阱。严格 ≤10 条，每条 1 行。
 
-<!-- 格式：
-### [决策标题] · YYYY-MM-DD
-背景：...
-决策：...
-替代方案及否决原因：...
--->
-
-_（暂无记录）_
-
----
-
-## Lessons Learned
-
-<!-- 格式：
-### [教训标题] · YYYY-MM-DD
-事件：...
-根因：...
-避免方式：...
--->
-
-_（暂无记录）_
-
----
-
-## Known Constraints & Gotchas
-
-> 长期有效的项目专属陷阱，每次会话都应记住。
-
-- **冻结文件**：`diagnosisStore.ts`、`useSSEDiagnosis.ts`、`useSessionHistory.ts`、`diagnosisApi.ts`、`diagnosis.ts` 不可修改
+- **httpx ≥ 0.28**：`AsyncClient` 不接受 `app=`，用 `ASGITransport(app=app)`
+- **冻结文件**：`diagnosisStore.ts` / `useSSEDiagnosis.ts` / `useSessionHistory.ts` / `diagnosisApi.ts` / `diagnosis.ts` 不可修改
 - **深色主题**：必须本地定义 `darkRiskColors`，禁用 `riskLevelColor`
-- **httpx ≥ 0.28**：`AsyncClient` 不接受 `app=` 参数，必须用 `ASGITransport(app=app)`
-- **嵌入模型**：测试中必须 patch `app.agents.retrieval.get_retriever`，禁止加载 4GB 模型
 - **LangGraph stub**：用 `app.dependency_overrides[get_graph]`，不用 `monkeypatch.setattr`
-- **`unit_id`**：是纯字符串（如 `"#1机"`），不是数字 ID
+- **Retriever patch**：stub 点是 `app.agents.retrieval.get_retriever`，`deps.py` 中不存在此符号
+- **嵌入模型**：测试中 patch retriever，禁止加载 4GB 本地模型
+- **`unit_id`**：纯字符串（如 `"#1机"`），不是数字 ID
+- **`AUTO_RANDOM_PROBLEMS_GEN`**：测试环境必须为 `false`，否则后台轮询污染状态
+
+---
+
+## Lessons
+> 排查 >30 分钟或反直觉的决策。每条 ≤3 行；超过 3 行提取到 `memories/L-xxx.md`。
+
+<!-- 格式：
+### L-xxx · [标题] · YYYY-MM-DD
+**Lesson**: 一句话结论
+**Apply when**: 触发条件
+→ [detail](memories/L-xxx.md)   ← 只在有详细文件时才写这行
+-->
+
+_（暂无记录）_
+
+---
+
+## Deliveries
+> 重大功能/重构的关键决策。只记录"为什么这样做"，不记录进度。每条 ≤2 行。
+
+<!-- 格式：
+### D-xxx · [交付标题] · YYYY-MM-DD
+**Key decision**: 最重要的一个决策及原因（影响未来类似工作）
+-->
+
+_（暂无记录）_
+
+---
+
+## Archive Index
+> 移出主索引的历史条目。不在会话启动时加载。
+
+→ [memories/archive/](memories/archive/)

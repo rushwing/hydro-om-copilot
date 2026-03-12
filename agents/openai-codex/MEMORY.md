@@ -1,55 +1,56 @@
 ---
 agent_id: openai_codex
-type: memory
+type: memory-index
+budget: 100 lines max (enforce on every write)
 last_updated: 2026-03-12
 ---
 
-# OpenAI Codex — Project Memory
+# OpenAI Codex — Memory Index
 
-> 记录重大 TC 设计决策、审查发现和经验教训。
-> 新会话启动时读此文件，避免重复遗漏，继承审查智慧。
-> 更新规则：每次完成 TC 设计或重大 code review 后追加。
+> **读取规则**：每次会话读 Gotchas（全部）+ Lessons/Deliveries 的标题行。
+> 只有当标题与当前任务相关时，才读 `→ detail` 链接的完整文件。
+> 超过 100 行时，将最久未引用的 Lessons 移至 `memories/archive/`。
 
 ---
 
-## Significant TC Designs
+## Gotchas
+> 每次 review / TC 设计都可能踩的项目专属陷阱。严格 ≤10 条，每条 1 行。
+
+- **SSE 格式**：`diagnosisApi.ts` 用 `\n\n` 分隔解析；mock 必须返回正确格式文本 fixture
+- **Pydantic ↔ TS 对齐**：`backend/app/models/` 字段变更必须同步到 `frontend/src/types/diagnosis.ts`
+- **深色主题**：检查新组件是否遗漏本地 `darkRiskColors` 定义
+- **`AUTO_RANDOM_PROBLEMS_GEN`**：测试环境必须 `false`，否则后台轮询干扰状态机
+- **依赖注入**：路由层用 `Depends(get_graph)`，测试必须用 `dependency_overrides`，不是 monkeypatch
+
+---
+
+## Lessons
+> TC 设计模式或 review 发现的高价值规律。每条 ≤3 行；超过 3 行提取到 `memories/L-xxx.md`。
 
 <!-- 格式：
-### TC-xxx · [标题] · YYYY-MM-DD
-覆盖场景：...
-设计决策：为什么选这几个场景
-未覆盖（及原因）：...
--->
-
-_（暂无记录，首次 TC 设计后填入）_
-
----
-
-## Code Review Findings
-
-<!-- 记录有代表性的 review 发现，帮助未来 review 更高效
-格式：
-### [发现标题] · YYYY-MM-DD · REQ/BUG-xxx
-问题：...
-Pattern：这类问题在哪些地方容易出现
+### L-xxx · [标题] · YYYY-MM-DD
+**Lesson**: 一句话结论
+**Apply when**: 触发条件
+→ [detail](memories/L-xxx.md)   ← 只在有详细文件时才写这行
 -->
 
 _（暂无记录）_
 
 ---
 
-## Lessons Learned
+## Deliveries
+> 重大 TC 设计或 review 发现的关键模式。每条 ≤2 行。
+
+<!-- 格式：
+### D-xxx · [交付标题] · YYYY-MM-DD
+**Key decision**: 最重要的一个决策及原因
+-->
 
 _（暂无记录）_
 
 ---
 
-## Known Review Checklist (Project-Specific)
+## Archive Index
+> 移出主索引的历史条目。不在会话启动时加载。
 
-> 本项目特有的审查要点，通用要点见 harness/review-standard.md。
-
-- **SSE 解析**：`diagnosisApi.ts` 用 `\n\n` 分隔解析，mock 时必须返回正确格式的文本 fixture
-- **Pydantic ↔ TS 对齐**：`backend/app/models/` 的字段变更必须同步到 `frontend/src/types/diagnosis.ts`
-- **依赖注入**：路由层通过 `Depends(get_graph)` 注入图，测试必须用 `dependency_overrides`
-- **AUTO_RANDOM_PROBLEMS_GEN**：测试环境必须为 `false`，否则后台轮询污染测试状态
-- **深色主题一致性**：检查新组件是否遗漏 `darkRiskColors` 本地定义
+→ [memories/archive/](memories/archive/)
