@@ -262,9 +262,9 @@ git checkout -b fix/BUG-001-xxx
 # 3. 开发并提交修复
 
 # 4. 最终 commit 更新 BUG-001.md：status=fixed, owner=claude_code（从 confirmed/unassigned 推进）
-#    retarget 到 main 时 HITL reviewer 解决 BUG-001.md 的两处冲突：
-#      status:  in_progress(main) vs fixed(fix)   → 保留 fixed
-#      owner:   claude_code(main) vs unassigned(fix base) → 保留 claude_code
+#    retarget 到 main 时 HITL reviewer 解决 BUG-001.md 的一处冲突：
+#      status: in_progress(main) vs fixed(fix) → 保留 fixed
+#    owner 不冲突：两侧均为 claude_code，git 自动合并
 
 # 5. PR base 设为依赖分支（不是 main）
 gh pr create \
@@ -276,7 +276,7 @@ gh pr create \
 #    - 若 REQ-001 分支被删除，GitHub 会自动将 BUG-001 PR 的 base 更新为 main
 #    - 若分支未删除，需手动执行：gh pr edit <BUG-001-PR> --base main
 # 7. BUG-001 PR 正常走 review → HITL merge
-#    merge 时解决 BUG-001.md 冲突：status=fixed, owner=claude_code（双字段，见上方说明）
+#    merge 时解决 BUG-001.md 的一处冲突：保留 status=fixed（owner 无冲突，见上方说明）
 ```
 
 > Reviewer（openai_codex）review Stacked PR 时，只需看相对于 base branch 的增量 diff，

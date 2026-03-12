@@ -49,6 +49,17 @@ require() {
   command -v "$1" &>/dev/null || die "'$1' not found. $2"
 }
 
+# require_auto_merge — Claim PR mutex 依赖 GitHub auto-merge，运行前需验证已启用
+# 调用方：cmd_implement / cmd_tc_design / cmd_bugfix（所有使用 Claim PR 的流程）
+require_auto_merge() {
+  local enabled=""
+  enabled=$(gh api repos/{owner}/{repo} --jq '.allow_auto_merge' 2>/dev/null) || \
+    die "无法查询 repo 配置（gh API 失败），请检查 gh 登录状态"
+  if [[ "$enabled" != "true" ]]; then
+    die "Claim PR mutex 需要 GitHub repo 启用 auto-merge，当前未启用。\n请到 Settings → General → Pull Requests → 勾选 'Allow auto-merge'，然后重试。\n（见 harness/ci-standard.md §Claim PR 配置）"
+  fi
+}
+
 # ── 依赖检查 ──────────────────────────────────────────────────────────────────
 # check_depends <file> [bypass_dep]
 # 读取 frontmatter 里的 depends_on，逐项查对应文件的 status。
@@ -282,6 +293,7 @@ cmd_implement() {
   [[ "$req" == "--force" ]] && { force=1; req="${2:-}"; }
   [[ -n "$req" ]] || die "Usage: harness implement [--force] <REQ-xxx>\n  例：harness implement REQ-001"
   require claude "Install: https://claude.ai/code"
+  require_auto_merge
 
   local req_file="${REPO_ROOT}/tasks/features/${req}.md"
   [[ -f "$req_file" ]] || die "${req_file} 不存在"
@@ -324,6 +336,7 @@ cmd_tc_design() {
   [[ "$req" == "--force" ]] && { force=1; req="${2:-}"; }
   [[ -n "$req" ]] || die "Usage: harness tc-design [--force] <REQ-xxx>\n  例：harness tc-design REQ-001"
   require codex "Install: npm install -g @openai/codex"
+  require_auto_merge
 
   local req_file="${REPO_ROOT}/tasks/features/${req}.md"
   [[ -f "$req_file" ]] || die "${req_file} 不存在"
@@ -396,6 +409,7 @@ cmd_bugfix() {
   bug="${1:-}"
   [[ -n "$bug" ]] || die "Usage: harness bugfix [--force] [--stacked <base-branch>] [--bundle <req-branch>] <BUG-xxx>\n  例：harness bugfix BUG-001\n      harness bugfix --stacked feat/REQ-001-xxx BUG-001\n      harness bugfix --bundle  feat/REQ-001-xxx BUG-001"
   require claude "Install: https://claude.ai/code"
+  require_auto_merge
 
   local bug_file="${REPO_ROOT}/tasks/bugs/${bug}.md"
   [[ -f "$bug_file" ]] || die "${bug_file} 不存在"
@@ -485,10 +499,9 @@ BUNDLE MODE — no separate Claim PR (the REQ branch is already locked; see bug-
 8. Open PR with --base ${stacked_base}:
    gh pr create --base ${stacked_base} --title 'fix: ${bug} ...' --body 'depends on #<REQ-PR>'
    Final commit must set status=fixed AND owner=claude_code in tasks/bugs/${bug}.md (from confirmed/unassigned).
-   On retarget to main, HITL reviewer resolves TWO conflicts in BUG-xxx.md:
-     status: in_progress(main) vs fixed(fix)       → keep fixed
-     owner:  claude_code(main) vs unassigned(base) → keep claude_code
-   Keeping only status=fixed would silently drop owner back to unassigned.
+   On retarget to main, HITL reviewer resolves ONE conflict in BUG-xxx.md:
+     status: in_progress(main) vs fixed(fix) → keep fixed
+   owner does NOT conflict: both sides are claude_code (main from Claim PR, fix branch from this commit).
    (When ${stacked_base} merges to main, GitHub auto-retargets this PR to main if branch is deleted)"
   else
     pr_topology_instruction="2. Only after claim merges: create branch fix/${bug}-<short-desc>
