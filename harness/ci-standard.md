@@ -14,6 +14,22 @@ last_reviewed: 2026-03-12
 
 ---
 
+## Claim PR 配置（已确定）
+
+认领互斥锁依赖 GitHub auto-merge 与 git 冲突检测，需要以下 repo 配置：
+
+| 配置项 | 设置值 | 说明 |
+|---|---|---|
+| Allow auto-merge | ✅ 启用 | Settings → General → Allow auto-merge |
+| Claim PR required reviews | 0 | 标题匹配 `^claim:` 的 PR 无需 human review |
+| Implementation PR required reviews | 1 | HITL 强制要求 |
+| Branch protection: require linear history | 推荐 | 防止并发 merge 造成无声覆盖 |
+
+> **当前状态**：auto-merge 未在 repo 配置，Claim PR 机制尚未完全生效。
+> 在正式接入 Agent 自动化之前，人工 pre-allocation 仍是主要防冲突手段。
+
+---
+
 ## 已确定原则
 
 ### Pre-commit 检查（本地，开发者 / Agent 必跑）

@@ -86,15 +86,34 @@ owner: unassigned
 # 2. 验证依赖
 # depends_on 中所有项均为 done
 
-# 3. 创建工作分支（Branch-as-Lock）
-git checkout -b feat/REQ-xxx-<short-description>
+# --- Claim PR（互斥锁）---
 
-# 4. 第一个 commit：仅更新需求状态
+# 3. 创建独立 Claim 分支（不混入实现代码）
+git checkout main && git pull
+git checkout -b claim/REQ-xxx
+
+# 4. 单文件 claim commit
 # 修改 tasks/features/REQ-xxx.md:
 #   owner: claude_code
 #   status: in_progress
+git add tasks/features/REQ-xxx.md
 git commit -m "claim: REQ-xxx"
-git push -u origin feat/REQ-xxx-<short-description>
+git push -u origin claim/REQ-xxx
+
+# 5. 开 Claim PR 并设 auto-merge（无需 human review）
+gh pr create --title "claim: REQ-xxx" \
+             --body "Claiming REQ-xxx for implementation by claude_code."
+gh pr merge --auto --merge
+
+# 6. 等待并检查结果（merged = 任务归你；failed = 已被认领，换任务）
+gh pr view --json state,mergeable,mergeStateStatus
+# state=MERGED  → 继续 Phase 2
+# mergeStateStatus=CONFLICTING → 任务已被认领，git checkout main && git branch -d claim/REQ-xxx，选其他任务
+
+# --- 认领成功后 ---
+# 7. 新开实现分支（Claim 分支仅含状态 commit，不用于实现）
+git checkout main && git pull
+git checkout -b feat/REQ-xxx-<short-description>
 ```
 
 ### Phase 2 · 实现（Implementation）

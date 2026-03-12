@@ -257,21 +257,28 @@ Agent 在认领需求前，必须依次确认：
 - [ ] `depends_on` 中所有项已 `done`
 - [ ] 任务范围与自身当前上下文不冲突
 
-### 8.3 认领规则（PR-as-Claim）
+### 8.3 认领规则（Claim PR auto-merge 作为互斥锁）
 
-| 项目 | 内容 |
+**核心机制：git 的 merge 冲突检测即互斥锁。**
+
+两个 Agent 同时认领 REQ-001 时，都会提交修改同一行（`owner` 字段）的 Claim PR：
+- 先 merge 者赢，`owner` 写入 main
+- 后 merge 者触发行冲突 → auto-merge 失败 → Agent 感知任务已被认领 → 选其他任务
+
+| 步骤 | 操作 |
 |---|---|
-| 规则 | 认领必须通过创建工作分支 + 第一个 commit + **立即开 Draft PR** 完成，不得仅口头声明 |
-| 分支命名 | `feat/REQ-001-<short-description>` |
-| 第一个 commit | 只改 `tasks/features/REQ-xxx.md`：`owner` → 自身标识，`status` → `in_progress`；commit message：`claim: REQ-001` |
-| Draft PR | 认领 commit push 后立即开 Draft PR，PR 标题包含 `REQ-xxx`——这是全局可见的认领信号 |
-| 竞态处理 | Agent 认领前先用 `gh pr list --search "REQ-xxx"` 检查是否已有 PR；若已有则跳过该任务 |
-| 好示例 | 分支已推送 + Draft PR 已开，任何人/Agent 均可见该任务已被认领 |
-| 坏示例 | 仅创建本地分支未推送，或推送了分支但未开 PR——其他 Agent 无法感知 |
+| 1 | 创建 Claim 分支：`claim/REQ-xxx` |
+| 2 | 单文件 commit：`tasks/features/REQ-xxx.md`，`owner → 自身标识`，`status → in_progress`；message：`claim: REQ-xxx` |
+| 3 | Push，立即开 **Claim PR**，标题：`claim: REQ-xxx`，启用 **auto-merge**（无需 human review）|
+| 4 | 检查 Claim PR 结果：merged → 任务归你；conflict/failed → 任务已被认领，删除分支，选其他任务 |
+| 5 | 认领成功后，新开实现分支 `feat/REQ-xxx-<desc>`，做实现工作，开 **Implementation PR**（需 HITL review）|
 
-> **局限性说明**：纯分支名锁不是原子锁——两个 Agent 可用不同分支名认领同一任务。
-> PR-as-Claim 通过 GitHub PR 列表作为共享可见状态解决此问题。
-> 在当前 HITL 模式下（所有 PR 需人工 review），双认领最终会在 review 阶段被发现和解决。
+| 好示例 | Claim PR 已 merge，`owner: claude_code` 在 main 上可见，开始实现 |
+| 坏示例 | 跳过 Claim PR 直接实现，或同一 PR 混入实现代码（实现 PR 不能 auto-merge）|
+
+> **GitHub 配置要求**（见 ci-standard.md §Claim PR）：
+> Claim PR 标题匹配 `^claim: REQ-` 时允许 auto-merge，且 0 required reviews。
+> Implementation PR 需要 1 个 human approve。
 
 ### 8.4 放弃与释放
 
@@ -408,4 +415,5 @@ blocked: [原因描述，例如"等待 PM 确认 API 字段设计" 或 "REQ-005 
 | 0.1 | 2026-03-12 | 初始版本；定义需求目录、状态机、优先级和 Claude Code / OpenAI Codex 双 Agent 认领规则 |
 | 0.2 | 2026-03-12 | 新增 `test_designed` 状态，强制测试先行；引入 `test_case_ref` 字段；删除 `blocked_by`，统一使用 `depends_on`；目录重设计（features/bugs/test-cases/archive/done+cancelled）；认领机制改为 Branch-as-Lock；更新同步规则与审查清单 |
 | 0.3 | 2026-03-12 | 根目录由 `requirements/` 重命名为 `tasks/`：Bug 在语义上是工作项而非规格说明，`tasks/` 对 Agent 更自然；子目录结构不变 |
-| 0.4 | 2026-03-12 | Branch-as-Lock 升级为 PR-as-Claim（Draft PR 作为全局可见认领信号，需先查 `gh pr list --search REQ-xxx`）；修正 §8.5 分工表（openai_codex 不认领实现任务，与 SOUL.md 对齐） |
+| 0.4 | 2026-03-12 | Branch-as-Lock 升级为 PR-as-Claim；修正 §8.5 分工表（openai_codex 不认领实现任务，与 SOUL.md 对齐）|
+| 0.5 | 2026-03-12 | PR-as-Claim 升级为 Claim PR auto-merge 互斥锁：git merge 冲突检测作为真正的互斥机制；Claim 分支与实现分支分离；GitHub 配置要求记录于 ci-standard.md |
