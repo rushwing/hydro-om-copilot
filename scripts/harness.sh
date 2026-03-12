@@ -70,11 +70,14 @@ check_depends() {
     elif [[ "$dep" == BUG-* ]]; then
       dep_file="${REPO_ROOT}/tasks/bugs/${dep}.md"
     fi
-    # 若活跃目录找不到，查归档目录（归档 = 已完成，视为满足）
+    # 若活跃目录找不到，查归档目录
     if [[ -z "${dep_file:-}" || ! -f "$dep_file" ]]; then
-      if [[ -f "${REPO_ROOT}/tasks/archive/done/${dep}.md" || \
-            -f "${REPO_ROOT}/tasks/archive/cancelled/${dep}.md" ]]; then
-        continue   # 已归档，依赖满足
+      if [[ -f "${REPO_ROOT}/tasks/archive/done/${dep}.md" ]]; then
+        continue   # done 归档，依赖满足
+      fi
+      if [[ -f "${REPO_ROOT}/tasks/archive/cancelled/${dep}.md" ]]; then
+        blocked_list="${blocked_list} ${dep}(cancelled)"   # cancelled 需人工决策
+        continue
       fi
       blocked_list="${blocked_list} ${dep}(not_found)"
       continue
@@ -333,7 +336,7 @@ cmd_bugfix() {
 
   local conflicts=""
   if ! conflicts=$(check_related_req_conflict "$bug_file"); then
-    die "${bug} 的关联需求正在实现中：${conflicts}\n等关联 REQ 完成后再认领，避免并发修改同一代码区域（见 bug-standard.md §6.1）。"
+    warn "${bug} 的关联需求正在实现中：${conflicts}\n若走 Stacked PR 流程（fix PR base 指向 REQ 分支），可继续；否则建议等 REQ 完成后再认领（见 bug-standard.md §6.1 及 agent-cli-playbook.md §Stacked PR）。"
   fi
 
   info "触发 Claude Code 认领并修复 ${bug} ..."
