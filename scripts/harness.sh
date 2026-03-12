@@ -201,6 +201,13 @@ cmd_tc_design() {
     die "${req} 已有 TC（test_case_ref=${existing_tc}），无需重复设计。若需重新设计，请先清空该字段。"
   fi
 
+  # depends_on 前置检查
+  local depends_on=""
+  depends_on=$(grep '^depends_on:' "$req_file" | sed 's/^depends_on: *//' | tr -d '[]" ') || true
+  if [[ -n "$depends_on" ]]; then
+    die "${req} 有未解除的依赖：depends_on=${depends_on}\n请等依赖合并后再设计 TC。"
+  fi
+
   info "触发 Codex TC 设计 ${req} ..."
   local tmp_out session_log="${REPO_ROOT}/.harness_sessions"
   tmp_out=$(mktemp)
@@ -260,14 +267,18 @@ cmd_bugfix() {
 Read agents/claude-code/SOUL.md and harness/bug-standard.md.
 
 Your task: fix ${bug}.
-1. Read tasks/bugs/${bug}.md — reproduction steps, related_req, related_tc
-2. Branch: fix/${bug}-<short-desc>
-3. First commit: claim only — status=in_progress, owner=claude_code in ${bug}.md (message: 'claim: ${bug}')
+
+IMPORTANT — use Claim PR mutex first (same as REQ implementation):
+1. Claim PR FIRST: branch claim/${bug}, single-file commit (status=in_progress, owner=claude_code in tasks/bugs/${bug}.md only),
+   push, open PR titled 'claim: ${bug}', enable auto-merge, wait for merge.
+   If merge fails (conflict) → another agent claimed it, stop.
+2. Only after claim merges: create branch fix/${bug}-<short-desc>
+3. Read tasks/bugs/${bug}.md fully — reproduction steps, related_req, related_tc
 4. Fix the bug
 5. Add regression test (required per bug-standard.md §7)
-6. Fill in 根因分析 and 修复方案 in ${bug}.md
+6. Fill in 根因分析 and 修复方案 in tasks/bugs/${bug}.md
 7. bash scripts/local/test.sh must pass before opening PR
-8. Open PR, then set status=fixed in ${bug}.md (fixed = PR exists, per bug-standard.md §5.1)
+8. Open PR, then set status=fixed in tasks/bugs/${bug}.md (fixed = PR exists, per bug-standard.md §5.1)
 "
 }
 
@@ -342,14 +353,17 @@ cmd_status() {
     local found=0
     for f in "$features_dir"/*.md(N); do
       [[ -f "$f" ]] || continue
-      local s o
+      local s o dep
       s=$(grep '^status:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       o=$(grep '^owner:'  "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       id=$(grep '^req_id:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       title=$(grep '^title:' "$f" 2>/dev/null | sed 's/^title: *//')
-      if [[ "$s" == "ready" && "$o" == "unassigned" ]]; then
+      dep=$(grep '^depends_on:' "$f" 2>/dev/null | sed 's/^depends_on: *//' | tr -d '[]" ') || true
+      if [[ "$s" == "ready" && "$o" == "unassigned" && -z "$dep" ]]; then
         echo -e "  ${GREEN}●${NC} ${id}  ${title}"
         found=1
+      elif [[ "$s" == "ready" && "$o" == "unassigned" && -n "$dep" ]]; then
+        echo -e "  ${YELLOW}○${NC} ${id}  ${title}  (blocked: depends_on=${dep})"
       fi
     done
     [[ $found -eq 1 ]] || echo "  (无)"
@@ -363,14 +377,17 @@ cmd_status() {
     local found=0
     for f in "$features_dir"/*.md(N); do
       [[ -f "$f" ]] || continue
-      local s o
+      local s o dep
       s=$(grep '^status:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       o=$(grep '^owner:'  "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       id=$(grep '^req_id:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       title=$(grep '^title:' "$f" 2>/dev/null | sed 's/^title: *//')
-      if [[ "$s" == "test_designed" && "$o" == "unassigned" ]]; then
+      dep=$(grep '^depends_on:' "$f" 2>/dev/null | sed 's/^depends_on: *//' | tr -d '[]" ') || true
+      if [[ "$s" == "test_designed" && "$o" == "unassigned" && -z "$dep" ]]; then
         echo -e "  ${GREEN}●${NC} ${id}  ${title}"
         found=1
+      elif [[ "$s" == "test_designed" && "$o" == "unassigned" && -n "$dep" ]]; then
+        echo -e "  ${YELLOW}○${NC} ${id}  ${title}  (blocked: depends_on=${dep})"
       fi
     done
     [[ $found -eq 1 ]] || echo "  (无)"

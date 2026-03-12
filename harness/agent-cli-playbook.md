@@ -57,9 +57,16 @@ Run bash scripts/local/test.sh before submitting the PR.
 ```bash
 claude -p "
 Read agents/claude-code/SOUL.md and harness/bug-standard.md.
-Fix BUG-<N>: read tasks/bugs/BUG-<N>.md for reproduction steps and root cause hints.
-Branch: fix/BUG-<N>-<short-desc>. First commit: claim only (status=in_progress, owner=claude_code).
-PR must include: fix code + regression test + filled 根因分析/修复方案 in BUG-<N>.md.
+
+IMPORTANT — use Claim PR mutex first (same pattern as REQ implementation):
+1. Claim PR FIRST: branch claim/BUG-<N>, single-file commit (status=in_progress, owner=claude_code),
+   push, open PR titled 'claim: BUG-<N>', enable auto-merge, wait for merge.
+   If merge fails (conflict) → another agent claimed it, stop.
+2. Only after claim merges: branch fix/BUG-<N>-<short-desc>
+3. Read tasks/bugs/BUG-<N>.md fully — reproduction steps, related_req, related_tc
+4. Fix the bug + add regression test + fill 根因分析/修复方案
+5. bash scripts/local/test.sh must pass before opening PR
+6. Open PR, then set status=fixed in BUG-<N>.md
 "
 ```
 
