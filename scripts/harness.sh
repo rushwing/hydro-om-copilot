@@ -607,19 +607,17 @@ cmd_status() {
 
   echo -e "${CYAN}── 可 TC 设计（status=ready, owner=unassigned）──${NC}"
   if [[ -d "$features_dir" ]]; then
-    local found=0
+    local found=0 s o id title pdeps
     for f in "$features_dir"/*.md(N); do
       [[ -f "$f" ]] || continue
-      local s o dep
       s=$(grep '^status:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       o=$(grep '^owner:'  "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       id=$(grep '^req_id:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       title=$(grep '^title:' "$f" 2>/dev/null | sed 's/^title: *//')
       if [[ "$s" == "ready" && "$o" == "unassigned" ]]; then
-        local pdeps=""
+        found=1
         if check_depends "$f" > /dev/null 2>&1; then
           echo -e "  ${GREEN}●${NC} ${id}  ${title}"
-          found=1
         else
           pdeps=$(check_depends "$f" 2>/dev/null) || true
           echo -e "  ${YELLOW}○${NC} ${id}  ${title}  (blocked: ${pdeps})"
@@ -634,19 +632,17 @@ cmd_status() {
   echo ""
   echo -e "${CYAN}── 可实现（status=test_designed, owner=unassigned）──${NC}"
   if [[ -d "$features_dir" ]]; then
-    local found=0
+    local found=0 s o id title pdeps
     for f in "$features_dir"/*.md(N); do
       [[ -f "$f" ]] || continue
-      local s o dep
       s=$(grep '^status:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       o=$(grep '^owner:'  "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       id=$(grep '^req_id:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       title=$(grep '^title:' "$f" 2>/dev/null | sed 's/^title: *//')
       if [[ "$s" == "test_designed" && "$o" == "unassigned" ]]; then
-        local pdeps=""
+        found=1
         if check_depends "$f" > /dev/null 2>&1; then
           echo -e "  ${GREEN}●${NC} ${id}  ${title}"
-          found=1
         else
           pdeps=$(check_depends "$f" 2>/dev/null) || true
           echo -e "  ${YELLOW}○${NC} ${id}  ${title}  (blocked: ${pdeps})"
@@ -661,26 +657,23 @@ cmd_status() {
   echo ""
   echo -e "${CYAN}── 可修复 Bug（status=confirmed, owner=unassigned）──${NC}"
   if [[ -d "$bugs_dir" ]]; then
-    local found=0
+    local found=0 s o id title sev pdeps pconflicts reason
     for f in "$bugs_dir"/*.md(N); do
       [[ -f "$f" ]] || continue
-      local s o
       s=$(grep '^status:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       o=$(grep '^owner:'  "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       id=$(grep '^bug_id:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       title=$(grep '^title:' "$f" 2>/dev/null | sed 's/^title: *//')
       sev=$(grep '^severity:' "$f" 2>/dev/null | awk '{print $2}' | tr -d '"')
       if [[ "$s" == "confirmed" && "$o" == "unassigned" ]]; then
-        local pdeps="" pconflicts="" reason=""
+        found=1
         pdeps=$(check_depends "$f" 2>/dev/null) || true
         pconflicts=$(check_related_req_conflict "$f" 2>/dev/null) || true
-        if [[ -n "$pdeps" ]]; then reason="depends_on: ${pdeps}"; fi
-        if [[ -n "$pconflicts" ]]; then
-          reason="${reason:+${reason}; }related_req in_progress: ${pconflicts}"
-        fi
+        reason=""
+        [[ -n "$pdeps"      ]] && reason="depends_on: ${pdeps}"
+        [[ -n "$pconflicts" ]] && reason="${reason:+${reason}; }related_req in_progress: ${pconflicts}"
         if [[ -z "$reason" ]]; then
           echo -e "  ${GREEN}●${NC} ${id} [${sev}]  ${title}"
-          found=1
         else
           echo -e "  ${YELLOW}○${NC} ${id} [${sev}]  ${title}  (blocked: ${reason})"
         fi
