@@ -108,7 +108,7 @@ codex exec --dangerously-bypass-approvals-and-sandbox "prompt"
 ### 模板 E · TC 设计（Acceptance Test Design）
 
 ```bash
-codex exec --full-auto "
+codex exec --dangerously-bypass-approvals-and-sandbox "
 Read agents/openai-codex/SOUL.md, harness/testing-standard.md, harness/requirement-standard.md.
 
 Your task: design acceptance test cases for REQ-<N>.
@@ -261,8 +261,10 @@ git checkout -b fix/BUG-001-xxx
 
 # 3. 开发并提交修复
 
-# 4. 最终 commit 更新 BUG-001.md：status=fixed（从 confirmed 直接推进）
-#    retarget 到 main 时 HITL reviewer 解决 BUG-001.md 的冲突（main=in_progress，fix=fixed），保留 fixed
+# 4. 最终 commit 更新 BUG-001.md：status=fixed, owner=claude_code（从 confirmed/unassigned 推进）
+#    retarget 到 main 时 HITL reviewer 解决 BUG-001.md 的两处冲突：
+#      status:  in_progress(main) vs fixed(fix)   → 保留 fixed
+#      owner:   claude_code(main) vs unassigned(fix base) → 保留 claude_code
 
 # 5. PR base 设为依赖分支（不是 main）
 gh pr create \
@@ -273,7 +275,8 @@ gh pr create \
 # 6. REQ-001 PR merge 后：
 #    - 若 REQ-001 分支被删除，GitHub 会自动将 BUG-001 PR 的 base 更新为 main
 #    - 若分支未删除，需手动执行：gh pr edit <BUG-001-PR> --base main
-# 7. BUG-001 PR 正常走 review → HITL merge（此时解决 BUG-001.md 冲突，保留 status=fixed）
+# 7. BUG-001 PR 正常走 review → HITL merge
+#    merge 时解决 BUG-001.md 冲突：status=fixed, owner=claude_code（双字段，见上方说明）
 ```
 
 > Reviewer（openai_codex）review Stacked PR 时，只需看相对于 base branch 的增量 diff，
@@ -285,7 +288,8 @@ gh pr create \
 
 | 场景 | 建议模式 |
 |---|---|
-| TC 设计 / bug 上报（只写文件）| `codex exec --full-auto` |
+| TC 设计（Claim PR mutex 需要 git push + gh）| `codex exec --dangerously-bypass-approvals-and-sandbox` |
+| Bug 上报（只写文件，无网络操作）| `codex exec --full-auto` |
 | Bug 修复（harness bugfix）| `claude -p`（由 harness.sh 调用 Claude Code）|
 | Review / 需要 gh 网络访问 | `codex exec --dangerously-bypass-approvals-and-sandbox` |
 | Claude Code 非交互 | `claude -p "..."` |

@@ -184,7 +184,8 @@ open → confirmed → in_progress → fixed → regressing → closed
 这是允许的例外，原因：
 - 认领互斥已由 Claim PR 在 `main` 上完成（`in_progress` 记录存在于 `main`）
 - fix 分支上不重复写入 `in_progress` 是为了避免向他人持有的共享依赖分支写入（见 §6.2 Stacked PR 例外）
-- PR retarget 到 `main` 时，HITL reviewer 解决 `BUG-xxx.md` 的一行冲突（`in_progress` vs `fixed`），保留 `fixed`
+- PR retarget 到 `main` 时，HITL reviewer 解决 `BUG-xxx.md` 的**两处**冲突（见 §6.2 Stacked PR 例外）：
+  `status`（`in_progress` vs `fixed`）保留 `fixed`；`owner`（`claude_code` vs `unassigned`）保留 `claude_code`
 
 ---
 
@@ -241,13 +242,16 @@ Stacked PR 的 fix 分支从 `<stacked_base>` 切出。Claim PR 正常合并到 
 2. `git fetch origin && git checkout <stacked_base> && git checkout -b fix/BUG-001-<desc>`
    — fix 分支上 `BUG-xxx.md` 此时显示 `status: confirmed`（来自依赖分支，非 `in_progress`），这是预期的
 3. 开发修复 + 回归测试
-4. 最终 commit：将 `BUG-xxx.md` 的 `status` 从 `confirmed` 改为 `fixed`（直接推进，跳过 `in_progress` 转换）
+4. 最终 commit：将 `BUG-xxx.md` 的 `status: confirmed → fixed`，`owner: unassigned → claude_code`（直接推进，跳过 `in_progress` 转换）
 5. 开 PR，base 指向 `<stacked_base>`
 
 > **retarget 时的冲突处理**：当 `<stacked_base>` merge 到 main 后，fix PR retarget 到 main，
-> `BUG-xxx.md` 会产生一行冲突（main 一侧为 `in_progress`，fix 分支一侧为 `fixed`）。
-> HITL reviewer 解决冲突时保留 `status: fixed` 即可。这是 Stacked PR 拓扑的已知代价，
-> 优于向他人持有的共享分支写入提交。
+> `BUG-xxx.md` 会产生**两处**冲突（`status` 和 `owner` 均被修改）：
+> - `status`：main 一侧为 `in_progress`，fix 分支一侧为 `fixed` → 保留 **`fixed`**
+> - `owner`：main 一侧为 `claude_code`（Claim PR 设置），fix 分支一侧为 `unassigned`（stacked_base 原值）→ 保留 **`claude_code`**
+>
+> 仅保留 `status: fixed` 会将 `owner` 退回 `unassigned`，违反 §5.1 语义（owner 应记录修复者）。
+> 这是 Stacked PR 拓扑的已知代价，优于向他人持有的共享分支写入提交。
 
 ### 6.3 修复完成要求
 

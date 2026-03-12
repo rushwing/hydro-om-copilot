@@ -178,8 +178,13 @@ ${task_content}
       info "已内联 ${task_id}（from PR head: ${pr_head}）"
 
       # 内联 TC 文件（供 reviewer 验证 TC 覆盖率）
+      # REQ 用 test_case_ref；BUG 用 related_tc（见 bug-standard.md §3.2）
       local tc_refs=""
-      tc_refs=$(echo "$task_content" | grep '^test_case_ref:' | sed 's/^test_case_ref: *//' | tr -d '[]"') || true
+      if [[ "$task_id" == BUG-* ]]; then
+        tc_refs=$(echo "$task_content" | grep '^related_tc:' | sed 's/^related_tc: *//' | tr -d '[]"') || true
+      else
+        tc_refs=$(echo "$task_content" | grep '^test_case_ref:' | sed 's/^test_case_ref: *//' | tr -d '[]"') || true
+      fi
       while IFS= read -r tc_id; do
         tc_id="${tc_id//[[:space:]]/}"
         [[ -z "$tc_id" ]] && continue
@@ -480,8 +485,11 @@ BUNDLE MODE — no separate Claim PR (the REQ branch is already locked; see bug-
    (BUG-xxx.md will show status=confirmed on this branch — that is expected)
 8. Open PR with --base ${stacked_base}:
    gh pr create --base ${stacked_base} --title 'fix: ${bug} ...' --body 'depends on #<REQ-PR>'
-   Final commit must set status=fixed in tasks/bugs/${bug}.md (from confirmed, skipping in_progress).
-   On retarget to main, HITL reviewer resolves the one-line BUG-xxx.md conflict by keeping status=fixed.
+   Final commit must set status=fixed AND owner=claude_code in tasks/bugs/${bug}.md (from confirmed/unassigned).
+   On retarget to main, HITL reviewer resolves TWO conflicts in BUG-xxx.md:
+     status: in_progress(main) vs fixed(fix)       → keep fixed
+     owner:  claude_code(main) vs unassigned(base) → keep claude_code
+   Keeping only status=fixed would silently drop owner back to unassigned.
    (When ${stacked_base} merges to main, GitHub auto-retargets this PR to main if branch is deleted)"
   else
     pr_topology_instruction="2. Only after claim merges: create branch fix/${bug}-<short-desc>
