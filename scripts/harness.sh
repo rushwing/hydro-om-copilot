@@ -546,11 +546,16 @@ cmd_fix_review() {
   pr_head=$(gh pr view  "$pr" --json headRefName -q '.headRefName')
   pr_base=$(gh pr view  "$pr" --json baseRefName -q '.baseRefName')
 
-  # 拉取 review 顶层 comments（分页，排除空 body）— 失败时 die，不静默跳过
+  # 拉取 review 顶层 comments — 失败时 die，不静默跳过
+  # 每个 reviewer 只保留最新一条 review：若其最新 review 为 APPROVED，则其之前的
+  # COMMENTED/CHANGES_REQUESTED 已被覆盖，不再注入（避免重放已处理的历史 findings）
   local review_comments=""
   review_comments=$(gh api --paginate "repos/{owner}/{repo}/pulls/${pr}/reviews" \
-    --jq '[.[] | select((.state=="COMMENTED" or .state=="CHANGES_REQUESTED") and (.body | length > 0))
-               | {id: .id, author: .user.login, state: .state, body: .body}]') \
+    --jq '[.[] | select(.body | length > 0)]
+           | group_by(.user.login)
+           | map(last | select((.state=="COMMENTED" or .state=="CHANGES_REQUESTED") and (.body | length > 0)))
+           | flatten
+           | map({id: .id, author: .user.login, state: .state, body: .body})') \
     || die "无法获取 PR #${pr} review comments（gh API 失败）"
 
   # 拉取 inline review comments（分页，排除 reply 和 outdated）— 失败时 die
