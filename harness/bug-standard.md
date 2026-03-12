@@ -164,7 +164,7 @@ open → confirmed → in_progress → fixed → regressing → closed
 ```
 
 - `open → confirmed`：能稳定复现，已确认是 Bug 而非设计如此
-- `confirmed → in_progress`：Agent 认领（Branch-as-Lock，见 §6）
+- `confirmed → in_progress`：Agent 认领（Claim PR mutex，见 §6）
 - `in_progress → fixed`：PR 已提，包含修复代码和回归 TC
 - `fixed → regressing`：PR 合并，CI 开始跑回归
 - `regressing → closed`：回归测试全通过

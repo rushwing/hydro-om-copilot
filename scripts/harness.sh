@@ -172,17 +172,7 @@ cmd_review() {
   pr_diff=$( gh pr diff "$pr" 2>/dev/null) || die "无法获取 PR #${pr} diff，请确认 gh 已登录且 PR 存在"
   [[ -n "$pr_diff" ]] || die "PR #${pr} diff 为空，无法进行 review"
 
-  # ── 查找关联 REQ/BUG 并内联内容 ─────────────────────────────────────────────
-  # Priority: 1) PR title/body  2) changed tasks/ files in diff  3) branch name
-  local task_id task_section=""
-  task_id=$(echo "$pr_title $pr_body" | grep -oE '(REQ|BUG)-[0-9]+' | head -1) || task_id=""
-  if [[ -z "$task_id" ]]; then
-    task_id=$(echo "$pr_diff" | grep -E '^(\+\+\+|---) [ab]/tasks/(features|bugs)/' \
-      | grep -oE '(REQ|BUG)-[0-9]+' | head -1) || true
-  fi
-  if [[ -z "$task_id" ]]; then
-    task_id=$(echo "$pr_head" | grep -oE '(REQ|BUG)-[0-9]+' | head -1) || true
-  fi
+  # ── 查找关联 REQ/BUG 并内联内容（支持多 ID，如 Bundle PR 同时含 REQ 和 BUG）────
   # Helper: fetch a file at the PR head ref via GitHub API (avoids local-checkout staleness)
   _fetch_pr_file() {
     local rel_path="$1"
@@ -190,25 +180,46 @@ cmd_review() {
       --jq '.content' 2>/dev/null | base64 -d 2>/dev/null
   }
 
-  if [[ -n "$task_id" ]]; then
-    local task_rel_path=""
+  # Collect ALL task IDs: 1) PR title/body  2) changed tasks/ files in diff
+  # 3) branch name (final fallback if still empty)
+  local -a task_ids=()
+  local _tid
+  for _tid in $(echo "$pr_title $pr_body" | grep -oE '(REQ|BUG)-[0-9]+'); do
+    task_ids+=("$_tid")
+  done
+  for _tid in $(echo "$pr_diff" \
+    | grep -E '^(\+\+\+|---) [ab]/tasks/(features|bugs)/' \
+    | grep -oE '(REQ|BUG)-[0-9]+'); do
+    task_ids+=("$_tid")
+  done
+  task_ids=(${(u)task_ids[@]})  # deduplicate
+  if [[ ${#task_ids[@]} -eq 0 ]]; then
+    _tid=$(echo "$pr_head" | grep -oE '(REQ|BUG)-[0-9]+' | head -1) || true
+    [[ -n "$_tid" ]] && task_ids+=("$_tid")
+  fi
+
+  # Hoist all per-task loop variables to avoid zsh local re-declaration stdout leak
+  local task_id task_rel_path task_content tc_refs tc_id tc_content tc_filename task_section=""
+
+  for task_id in "${task_ids[@]}"; do
+    task_rel_path=""
     [[ "$task_id" == REQ-* ]] && task_rel_path="tasks/features/${task_id}.md"
     [[ "$task_id" == BUG-* ]] && task_rel_path="tasks/bugs/${task_id}.md"
 
-    local task_content=""
+    task_content=""
     if [[ -n "$task_rel_path" ]]; then
       task_content=$(_fetch_pr_file "$task_rel_path")
     fi
 
     if [[ -n "$task_content" ]]; then
-      task_section="### Associated task: ${task_id}
+      task_section="${task_section}### Associated task: ${task_id}
 ${task_content}
 "
       info "已内联 ${task_id}（from PR head: ${pr_head}）"
 
       # 内联 TC 文件（供 reviewer 验证 TC 覆盖率）
       # REQ 用 test_case_ref；BUG 用 related_tc（见 bug-standard.md §3.2）
-      local tc_refs=""
+      tc_refs=""
       if [[ "$task_id" == BUG-* ]]; then
         tc_refs=$(echo "$task_content" | grep '^related_tc:' | sed 's/^related_tc: *//' | tr -d '[]"') || true
       else
@@ -218,8 +229,8 @@ ${task_content}
         tc_id="${tc_id//[[:space:]]/}"
         [[ -z "$tc_id" ]] && continue
         # TC files are named TC-<N>-<desc>.md — resolve via directory listing at pr_head
-        local tc_content=""
-        local tc_filename=""
+        tc_content=""
+        tc_filename=""
         tc_filename=$(gh api "repos/{owner}/{repo}/contents/tasks/test-cases?ref=${pr_head}" \
           --jq ".[] | select(.name | startswith(\"${tc_id}\")) | .name" 2>/dev/null | head -1) || true
         if [[ -n "$tc_filename" ]]; then
@@ -242,14 +253,14 @@ ${tc_content}
       done < <(echo "$tc_refs" | tr ',\n' '\n')
     elif [[ -n "$task_rel_path" ]]; then
       # Fail closed: do not substitute local files
-      task_section="### Associated task: ${task_id}
+      task_section="${task_section}### Associated task: ${task_id}
 ⚠ WARNING: ${task_id} not found at PR head ref \`${pr_head}\`. Cannot verify acceptance criteria.
 "
       warn "${task_id} 在 PR head 未找到，已注入缺失警告（不使用本地版本）"
     else
       warn "${task_id} 在 PR 描述中提及，但无法解析为已知 tasks/ 路径"
     fi
-  fi
+  done
 
   # ── Stacked PR 提示 ──────────────────────────────────────────────────────────
   local stacked_note=""
