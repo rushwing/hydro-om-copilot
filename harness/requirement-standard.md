@@ -37,7 +37,7 @@ last_reviewed: 2026-03-12
 |---|---|
 | 规则 | 与代码实现直接相关、需要 Agent 读取并执行的需求，必须记录在 repo 内 |
 | 目的 | 让 Agent 在本地即可获得稳定上下文，不依赖聊天记录或外部项目管理工具 |
-| 好示例 | 某个自动诊断 stop 语义、历史归档流转、测试补齐要求写入 `requirements/items/` |
+| 好示例 | 某个自动诊断 stop 语义、历史归档流转、测试补齐要求写入 `tasks/items/` |
 | 坏示例 | 关键验收条件只存在于聊天里，repo 内无对应需求项 |
 
 ### 2.2 需求文档应短小、结构化、可认领
@@ -65,26 +65,26 @@ last_reviewed: 2026-03-12
 ### 3.1 目录结构
 
 ```text
-requirements/
-  phases/         # Phase 定义文档 (PHASE-xxx)
-  features/       # 功能需求项 (REQ-xxx)
-  bugs/           # Bug 报告 (BUG-xxx，见 harness/bug-standard.md)
-  test-cases/     # 测试用例设计 (TC-xxx，与 REQ / BUG 一对一或一对多关联)
+tasks/                  # 所有待执行工作项的根目录
+  phases/               # Phase 定义文档 (PHASE-xxx)
+  features/             # 功能需求项 (REQ-xxx)
+  bugs/                 # Bug 报告 (BUG-xxx，见 harness/bug-standard.md)
+  test-cases/           # 测试用例设计 (TC-xxx，先于实现创建)
   archive/
-    done/         # 已完成归档
-    cancelled/    # 已废弃归档
+    done/               # 已完成归档
+    cancelled/          # 已废弃归档
 ```
 
 ### 3.2 目录职责
 
 | 目录 | ID 前缀 | 职责 |
 |---|---|---|
-| `requirements/phases/` | `PHASE-xxx` | 记录阶段目标、范围、入口/退出条件 |
-| `requirements/features/` | `REQ-xxx` | 当前活跃的功能需求项 |
-| `requirements/bugs/` | `BUG-xxx` | Bug 报告（独立生命周期，见 bug-standard） |
-| `requirements/test-cases/` | `TC-xxx` | 测试用例设计文档，先于实现创建 |
-| `requirements/archive/done/` | — | 已完成的 REQ / BUG / TC |
-| `requirements/archive/cancelled/` | — | 已废弃的 REQ / BUG / TC |
+| `tasks/phases/` | `PHASE-xxx` | 记录阶段目标、范围、入口/退出条件 |
+| `tasks/features/` | `REQ-xxx` | 当前活跃的功能需求项 |
+| `tasks/bugs/` | `BUG-xxx` | Bug 报告（独立生命周期，见 bug-standard） |
+| `tasks/test-cases/` | `TC-xxx` | 测试用例设计文档，先于实现创建 |
+| `tasks/archive/done/` | — | 已完成的 REQ / BUG / TC |
+| `tasks/archive/cancelled/` | — | 已废弃的 REQ / BUG / TC |
 
 ### 3.3 文档粒度
 
@@ -253,7 +253,7 @@ Agent 在认领需求前，必须依次确认：
 
 - [ ] `status == test_designed`
 - [ ] `owner == unassigned`
-- [ ] `test_case_ref` 非空（TC 文档已存在于 `requirements/test-cases/`）
+- [ ] `test_case_ref` 非空（TC 文档已存在于 `tasks/test-cases/`）
 - [ ] `depends_on` 中所有项已 `done`
 - [ ] 任务范围与自身当前上下文不冲突
 
@@ -263,7 +263,7 @@ Agent 在认领需求前，必须依次确认：
 |---|---|
 | 规则 | 认领必须通过创建工作分支 + 第一个 commit 原子完成，不得仅口头声明 |
 | 分支命名 | `feat/REQ-001-<short-description>`（branch 名即认领信号，全局可见）|
-| 第一个 commit | 只改 `requirements/features/REQ-xxx.md`：`owner` → 自身标识，`status` → `in_progress` |
+| 第一个 commit | 只改 `tasks/features/REQ-xxx.md`：`owner` → 自身标识，`status` → `in_progress` |
 | 竞态解决 | 若两个 Agent 同时创建同名分支，后 push 的一方会因 non-fast-forward 失败，应选其他 `test_designed` 项重试 |
 | 好示例 | 分支 `feat/REQ-001-sse-error-handling`，首 commit message `claim: REQ-001` |
 | 坏示例 | Agent 开始写代码，但未创建分支也未更新需求状态 |
@@ -336,8 +336,8 @@ blocked: [原因描述，例如"等待 PM 确认 API 字段设计" 或 "REQ-005 
 ### 10.3 合并后
 
 - [ ] 把需求项改为 `done`
-- [ ] 将 `requirements/features/REQ-xxx.md` 移到 `requirements/archive/done/`
-- [ ] 将关联的 `requirements/test-cases/TC-xxx.md` 同步移到 `requirements/archive/done/`
+- [ ] 将 `tasks/features/REQ-xxx.md` 移到 `tasks/archive/done/`
+- [ ] 将关联的 `tasks/test-cases/TC-xxx.md` 同步移到 `tasks/archive/done/`
 - [ ] 若影响阶段目标，更新对应 `phases/` 文档
 
 ---
@@ -352,7 +352,7 @@ blocked: [原因描述，例如"等待 PM 确认 API 字段设计" 或 "REQ-005 
 - [ ] `owner` 只使用 `unassigned/claude_code/openai_codex`
 - [ ] `depends_on` 中的编号在 repo 中存在
 - [ ] `status == test_designed` 时 `test_case_ref` 非空
-- [ ] `test_case_ref` 中的 TC 文档在 `requirements/test-cases/` 中存在
+- [ ] `test_case_ref` 中的 TC 文档在 `tasks/test-cases/` 中存在
 - [ ] `status == in_progress` 时 `owner != unassigned`
 
 ### 人工检查
@@ -396,3 +396,4 @@ blocked: [原因描述，例如"等待 PM 确认 API 字段设计" 或 "REQ-005 
 |---|---|---|
 | 0.1 | 2026-03-12 | 初始版本；定义需求目录、状态机、优先级和 Claude Code / OpenAI Codex 双 Agent 认领规则 |
 | 0.2 | 2026-03-12 | 新增 `test_designed` 状态，强制测试先行；引入 `test_case_ref` 字段；删除 `blocked_by`，统一使用 `depends_on`；目录重设计（features/bugs/test-cases/archive/done+cancelled）；认领机制改为 Branch-as-Lock；更新同步规则与审查清单 |
+| 0.3 | 2026-03-12 | 根目录由 `requirements/` 重命名为 `tasks/`：Bug 在语义上是工作项而非规格说明，`tasks/` 对 Agent 更自然；子目录结构不变 |
