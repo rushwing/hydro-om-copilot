@@ -148,32 +148,53 @@ cmd_review() {
   # ── 查找关联 REQ/BUG 并内联内容 ─────────────────────────────────────────────
   local task_id task_section=""
   task_id=$(echo "$pr_title $pr_body" | grep -oE '(REQ|BUG)-[0-9]+' | head -1) || task_id=""
+  # Helper: fetch a file at the PR head ref via GitHub API (avoids local-checkout staleness)
+  _fetch_pr_file() {
+    local rel_path="$1"
+    gh api "repos/{owner}/{repo}/contents/${rel_path}?ref=${pr_head}" \
+      --jq '.content' 2>/dev/null | base64 -d 2>/dev/null
+  }
+
   if [[ -n "$task_id" ]]; then
-    local task_file=""
-    if [[ "$task_id" == REQ-* && -f "${REPO_ROOT}/tasks/features/${task_id}.md" ]]; then
-      task_file="${REPO_ROOT}/tasks/features/${task_id}.md"
+    local task_rel_path=""
+    [[ "$task_id" == REQ-* ]] && task_rel_path="tasks/features/${task_id}.md"
+    [[ "$task_id" == BUG-* ]] && task_rel_path="tasks/bugs/${task_id}.md"
+
+    local task_content=""
+    if [[ -n "$task_rel_path" ]]; then
+      task_content=$(_fetch_pr_file "$task_rel_path")
     fi
-    if [[ "$task_id" == BUG-* && -f "${REPO_ROOT}/tasks/bugs/${task_id}.md" ]]; then
-      task_file="${REPO_ROOT}/tasks/bugs/${task_id}.md"
+
+    # Fallback to local checkout if API returned nothing (file not in PR head)
+    if [[ -z "$task_content" && -n "$task_rel_path" && -f "${REPO_ROOT}/${task_rel_path}" ]]; then
+      task_content=$(cat "${REPO_ROOT}/${task_rel_path}")
+      warn "${task_id} 在 PR head 未找到，使用本地版本（可能非最新）"
     fi
-    if [[ -n "$task_file" ]]; then
+
+    if [[ -n "$task_content" ]]; then
       task_section="### Associated task: ${task_id}
-$(cat "$task_file")
+${task_content}
 "
-      info "已内联 ${task_id} → $(basename "$task_file")"
+      info "已内联 ${task_id}（from PR head: ${pr_head}）"
 
       # 内联 TC 文件（供 reviewer 验证 TC 覆盖率）
       local tc_refs=""
-      tc_refs=$(grep '^test_case_ref:' "$task_file" | sed 's/^test_case_ref: *//' | tr -d '[]"') || true
+      tc_refs=$(echo "$task_content" | grep '^test_case_ref:' | sed 's/^test_case_ref: *//' | tr -d '[]"') || true
       while IFS= read -r tc_id; do
         tc_id="${tc_id//[[:space:]]/}"
         [[ -z "$tc_id" ]] && continue
-        local tc_file=""
-        tc_file=$(echo "${REPO_ROOT}/tasks/test-cases/${tc_id}"*.md(N) | awk '{print $1}')
-        if [[ -f "${tc_file:-}" ]]; then
+        # Try PR head first, then local glob
+        local tc_content=""
+        tc_content=$(_fetch_pr_file "tasks/test-cases/${tc_id}.md" 2>/dev/null)
+        if [[ -z "$tc_content" ]]; then
+          local tc_file=""
+          tc_file=$(echo "${REPO_ROOT}/tasks/test-cases/${tc_id}"*.md(N) | awk '{print $1}')
+          [[ -f "${tc_file:-}" ]] && tc_content=$(cat "$tc_file")
+        fi
+        if [[ -n "$tc_content" ]]; then
           task_section="${task_section}
 ### TC: ${tc_id}
-$(cat "$tc_file")
+${tc_content}
 "
           info "已内联 TC ${tc_id}"
         fi
@@ -365,11 +386,6 @@ cmd_bugfix() {
   [[ "$owner" == "unassigned" ]] \
     || die "${bug} 已被 ${owner} 认领"
 
-  local pending_deps=""
-  if ! pending_deps=$(check_depends "$bug_file"); then
-    die "${bug} 有未完成的依赖：${pending_deps}\n依赖 status=done/closed 后方可认领（见 bug-standard.md §3.2 Serialize 策略）。"
-  fi
-
   local conflicts=""
   if ! conflicts=$(check_related_req_conflict "$bug_file"); then
     if [[ -n "$stacked_base" ]]; then
@@ -377,6 +393,16 @@ cmd_bugfix() {
     else
       die "${bug} 的关联需求正在实现中：${conflicts}\n请选择：\n  1. 等 REQ 完成后再认领\n  2. 使用 Stacked PR：harness bugfix --stacked <REQ分支> ${bug}\n（见 bug-standard.md §6.1 及 agent-cli-playbook.md §Stacked PR）"
     fi
+  fi
+
+  # depends_on gate：--stacked 绕过（Stacked PR 本身就是处理依赖未完成时的路径）
+  if [[ -z "$stacked_base" ]]; then
+    local pending_deps=""
+    if ! pending_deps=$(check_depends "$bug_file"); then
+      die "${bug} 有未完成的依赖：${pending_deps}\n依赖 status=done/closed 后方可认领（见 bug-standard.md §3.2 Serialize 策略）。\n若需立即修复，使用 Stacked PR：harness bugfix --stacked <依赖分支> ${bug}"
+    fi
+  else
+    info "Stacked PR 模式：跳过 depends_on 检查（依赖由 base 分支 ${stacked_base} 提供）"
   fi
 
   info "触发 Claude Code 认领并修复 ${bug} ..."
