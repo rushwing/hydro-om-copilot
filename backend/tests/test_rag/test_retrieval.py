@@ -164,6 +164,52 @@ def test_matches_topic_no_route_keys():
 
 
 @pytest.mark.asyncio
+async def test_aretrieve_uses_both_dense_and_sparse():
+    """
+    Prove that both the dense and sparse paths contribute to the fused output.
+
+    Dense returns docs tagged 'dense-only'; sparse returns docs tagged
+    'sparse-only'; one shared doc appears at rank-1 in both (highest RRF score).
+    After fusion the result must contain docs from both exclusive pools,
+    which is impossible unless both retrieval paths ran and were merged.
+
+    _rerank is patched to identity so ordering is deterministic.
+    """
+    from unittest.mock import patch as _patch
+
+    shared     = _doc("L2.TOPIC.SHARED", "shared content")
+    dense_docs = [_doc(f"L2.TOPIC.D{i}", f"dense {i}") for i in range(4)]
+    sparse_docs = [_doc(f"L2.TOPIC.S{i}", f"sparse {i}") for i in range(4)]
+
+    # Dense: shared first, then dense-only docs
+    dense_pool = [shared] + dense_docs
+    # Sparse: shared first, then sparse-only docs
+    sparse_pool = [shared] + sparse_docs
+
+    mock_vs = AsyncMock()
+    mock_vs.asimilarity_search = AsyncMock(side_effect=lambda query, k=10: dense_pool[:k])
+    mock_bm25 = MagicMock()
+    mock_bm25.retrieve = MagicMock(side_effect=lambda query, top_k=10: sparse_pool[:top_k])
+    retriever = HybridRetriever(mock_vs, mock_bm25, "procedure")
+
+    with _patch("app.rag.hybrid_retriever._rerank", side_effect=lambda q, docs: docs):
+        results = await retriever.aretrieve("振动摆度异常")
+
+    result_ids = {r["doc_id"] for r in results}
+
+    # Shared doc must appear (highest RRF score — in both lists)
+    assert "L2.TOPIC.SHARED" in result_ids, "Shared doc (highest RRF) must appear in results"
+
+    # At least one dense-only doc must appear (proves dense path ran)
+    dense_ids = {f"L2.TOPIC.D{i}" for i in range(4)}
+    assert result_ids & dense_ids, f"No dense-only doc in results; dense retrieval may be bypassed. ids={result_ids}"
+
+    # At least one sparse-only doc must appear (proves sparse/BM25 path ran)
+    sparse_ids = {f"L2.TOPIC.S{i}" for i in range(4)}
+    assert result_ids & sparse_ids, f"No sparse-only doc in results; BM25 retrieval may be bypassed. ids={result_ids}"
+
+
+@pytest.mark.asyncio
 async def test_aretrieve_returns_top_k():
     """
     When top_k == reranker_top_k and enough documents are available, aretrieve
