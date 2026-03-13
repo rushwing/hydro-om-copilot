@@ -85,8 +85,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Find next claimable task
         run: python scripts/agent-loop.py
-        # 扫描 tasks/features/：status=test_designed, owner=unassigned
-        # 输出下一个可认领任务，供人工决定是否触发 Agent
+        # Pass 1：扫描 tasks/features/：status=ready, owner=unassigned, test_case_ref=[]
+        #         → 触发 openai_codex TC 设计（harness.sh tc-design）
+        # Pass 2：扫描 tasks/features/：status=test_designed, owner=unassigned
+        #         → 触发 claude_code 实现（harness.sh implement）
+        # 输出可认领任务列表，供人工决定是否触发 Agent
 ```
 
 > `scripts/agent-loop.py` 当前为 stub（仅打印可认领任务列表）。

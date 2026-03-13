@@ -109,12 +109,19 @@ tasks/
 ```
 PR merged to main
     └─▶ GitHub Action: scripts/agent-loop.py  [🔲 stub]
-            └─▶ 扫描 tasks/features/：status=test_designed, owner=unassigned
-            └─▶ 调用 claude -p 认领并实现
-            └─▶ claude_code 开 Draft PR
-            └─▶ openai_codex 在 GitHub PR 上 review
-            └─▶ HITL 确认 merge → 循环
+            ├─▶ Pass 1 — TC 设计（Stage 2）
+            │       └─▶ 扫描 tasks/features/：status=ready, owner=unassigned, test_case_ref=[]
+            │       └─▶ 调用 codex exec 认领并设计 TC（harness.sh tc-design）
+            │       └─▶ openai_codex 开 TC 设计 PR → HITL 确认 merge
+            └─▶ Pass 2 — 实现（Stage 3）
+                    └─▶ 扫描 tasks/features/：status=test_designed, owner=unassigned
+                    └─▶ 调用 claude -p 认领并实现（harness.sh implement）
+                    └─▶ claude_code 开 Draft PR
+                    └─▶ openai_codex 在 GitHub PR 上 review
+                    └─▶ HITL 确认 merge → 循环
 ```
+
+> 注：两个 Pass 顺序执行；Pass 1 找到可认领 TC 设计任务时优先处理，Pass 2 独立运行不受 Pass 1 阻塞（两类任务互不依赖）。
 
 > `scripts/agent-loop.py` 当前为 stub，触发机制在 [ci-standard](ci-standard.md) 中定义后接入。
 
@@ -125,3 +132,4 @@ PR merged to main
 | 版本 | 日期 | 变更摘要 |
 |---|---|---|
 | 0.1 | 2026-03-12 | 初始版本；定义完整开发循环、阶段总览、规程索引、Agent 分工和 Git-Native 编排机制 |
+| 0.2 | 2026-03-13 | 自动化 loop 补充 Pass 1（ready→TC 设计，openai_codex）和 Pass 2（test_designed→实现，claude_code）两阶段说明，对齐 Stage 2 active 状态 |
