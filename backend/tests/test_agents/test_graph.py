@@ -127,3 +127,65 @@ async def test_graph_ainvoke_no_image():
     mock_reasoning.assert_called_once()
     mock_report_gen.assert_called_once()
     mock_image_agent.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_graph_ainvoke_with_image():
+    """
+    ainvoke() executes the 5-node image path end-to-end.
+
+    Sets image_base64 in the initial state so route_after_parse returns
+    'image_agent'.  Verifies that image_agent_node is called exactly once
+    (and called before retrieval) via the real compiled-graph wiring.
+    No LLM calls — all five node functions are AsyncMocks.
+    """
+    call_order: list[str] = []
+
+    def _make_node(name: str, return_val: dict) -> AsyncMock:
+        """Return an AsyncMock whose side_effect records the call order."""
+        async def _se(_state: dict) -> dict:
+            call_order.append(name)
+            return return_val
+        return AsyncMock(side_effect=_se)
+
+    mock_symptom_parser = _make_node("symptom_parser", {"parsed_symptom": {"unit_id": "#1机"}, "topic": "vibration_swing"})
+    mock_image_agent   = _make_node("image_agent",   {"ocr_text": "仪表读数 38 Hz"})
+    mock_retrieval     = _make_node("retrieval",     {"sources": ["VIB.001"]})
+    mock_reasoning     = _make_node("reasoning",     {
+        "root_causes": [{"rank": 1, "title": "质量不平衡", "probability": 0.9, "evidence": [], "parameters_to_confirm": []}],
+        "risk_level": "high",
+        "escalation_required": False,
+        "escalation_reason": None,
+    })
+    mock_report_gen    = _make_node("report_gen",    {
+        "check_steps": [{"step": 1, "action": "检查转轮", "expected": None, "caution": None}],
+        "report_draft": "图片诊断报告",
+    })
+
+    initial_with_image = {**_INITIAL_STATE, "image_base64": "aGVsbG8="}  # base64("hello")
+
+    with (
+        patch("app.agents.graph.symptom_parser_node", mock_symptom_parser),
+        patch("app.agents.graph.retrieval_node", mock_retrieval),
+        patch("app.agents.graph.reasoning_node", mock_reasoning),
+        patch("app.agents.graph.report_gen_node", mock_report_gen),
+        patch("app.agents.graph.image_agent_node", mock_image_agent),
+    ):
+        compiled = build_graph().compile()
+        result = await compiled.ainvoke(initial_with_image)
+
+    # All five nodes must have been called
+    mock_symptom_parser.assert_called_once()
+    mock_image_agent.assert_called_once()
+    mock_retrieval.assert_called_once()
+    mock_reasoning.assert_called_once()
+    mock_report_gen.assert_called_once()
+
+    # image_agent must run before retrieval
+    assert call_order.index("image_agent") < call_order.index("retrieval"), (
+        f"image_agent must precede retrieval in call order; got {call_order}"
+    )
+
+    # Final state must still carry the required AgentState fields
+    assert result["report_draft"] == "图片诊断报告"
+    assert result["root_causes"]
