@@ -20,7 +20,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from typing import List
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -136,12 +136,17 @@ def test_ingest_creates_chroma_collection(tmp_kb: Path) -> None:
     bm25 = BM25Index.load(bm25_path)
     assert len(bm25._docs) > 0, "Loaded BM25 index has no documents"
 
-    # 3. HybridRetriever can use the loaded BM25
-    mock_vs = AsyncMock()
-    mock_vs.asimilarity_search = AsyncMock(return_value=corpus_chunks[:1])
-    retriever = HybridRetriever(mock_vs, bm25, "procedure")
-    results = asyncio.run(retriever.aretrieve("振动摆度异常"))
-    assert isinstance(results, list)
+    # 3. HybridRetriever can query the persisted ChromaDB + loaded BM25 together
+    #    (no mock_vs — uses the real Chroma collection written by _ingest)
+    with (
+        patch("app.rag.vectorstore._build_embeddings", return_value=_FakeEmbeddings()),
+        patch.object(settings, "chroma_persist_dir", str(chroma_dir)),
+        patch.object(settings, "vector_store_type", "chroma"),
+    ):
+        vs_real = build_vectorstore(collection="hydro_kb_procedure")
+        retriever = HybridRetriever(vs_real, bm25, "procedure")
+        results = asyncio.run(retriever.aretrieve("振动摆度异常"))
+    assert len(results) > 0, "Persisted ChromaDB + BM25 must be queryable via HybridRetriever"
 
 
 @pytest.mark.xfail(
