@@ -75,20 +75,51 @@ VALID_PRIORITIES = {"P0", "P1", "P2", "P3"}
 
 
 def _parse_frontmatter(text: str) -> dict[str, str]:
-    """Extract YAML-ish frontmatter between --- delimiters (simple line-by-line parser)."""
+    """Extract YAML-ish frontmatter between --- delimiters.
+
+    Supports both inline values  (key: value)
+    and YAML block lists          (key:\n  - item1\n  - item2).
+    Block list values are stored as '[item1, item2]' so that downstream
+    consumers (re.findall, split) can consume them without changes.
+    """
     lines = text.splitlines()
     in_fm = False
     fm: dict[str, str] = {}
+    pending_key: str | None = None
+    pending_items: list[str] = []
+
+    def _flush() -> None:
+        if pending_key is not None:
+            fm[pending_key] = "[" + ", ".join(pending_items) + "]"
+
     for line in lines:
         if line.strip() == "---":
             if not in_fm:
                 in_fm = True
                 continue
             else:
+                _flush()
                 break
-        if in_fm and ":" in line:
+        if not in_fm:
+            continue
+        # YAML block list item continuation (indented "- value")
+        if pending_key is not None and re.match(r"^\s+-\s", line):
+            pending_items.append(line.strip().lstrip("-").strip())
+            continue
+        # Any non-list line flushes the pending list
+        _flush()
+        pending_key = None
+        pending_items = []
+        if ":" in line and not line.startswith(" "):
             key, _, val = line.partition(":")
-            fm[key.strip()] = val.strip()
+            val = val.strip()
+            if val:
+                fm[key.strip()] = val
+            else:
+                pending_key = key.strip()
+    else:
+        _flush()
+
     return fm
 
 

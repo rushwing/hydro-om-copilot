@@ -32,7 +32,13 @@ _BUG_DONE_STATUSES = {"closed"}
 
 
 def parse_frontmatter(path: Path) -> dict:
-    """Extract key: value pairs from YAML frontmatter (--- delimited)."""
+    """Extract key: value pairs from YAML frontmatter (--- delimited).
+
+    Supports both inline values  (key: value)
+    and YAML block lists          (key:\n  - item1\n  - item2).
+    Block list values are stored as '[item1, item2]' so that the existing
+    _parse_list_field() helper can consume them without changes.
+    """
     fields: dict = {}
     try:
         text = path.read_text(encoding="utf-8")
@@ -41,12 +47,37 @@ def parse_frontmatter(path: Path) -> dict:
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
         return fields
+
+    pending_key: str | None = None
+    pending_items: list[str] = []
+
+    def _flush() -> None:
+        if pending_key is not None:
+            fields[pending_key] = "[" + ", ".join(pending_items) + "]"
+
     for line in lines[1:]:
         if line.strip() == "---":
+            _flush()
             break
-        if ":" in line:
+        # YAML block list item continuation (indented "- value")
+        if pending_key is not None and re.match(r"^\s+-\s", line):
+            pending_items.append(line.strip().lstrip("-").strip())
+            continue
+        # Any non-list line flushes the pending list
+        _flush()
+        pending_key = None
+        pending_items = []
+        if ":" in line and not line.startswith(" "):
             key, _, val = line.partition(":")
-            fields[key.strip()] = val.strip().strip('"')
+            val = val.strip().strip('"')
+            if val:
+                fields[key.strip()] = val
+            else:
+                # No inline value — may be followed by block list items
+                pending_key = key.strip()
+    else:
+        _flush()
+
     return fields
 
 

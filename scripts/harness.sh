@@ -224,7 +224,14 @@ ${task_content}
       if [[ "$task_id" == BUG-* ]]; then
         tc_refs=$(echo "$task_content" | grep '^related_tc:' | sed 's/^related_tc: *//' | tr -d '[]"') || true
       else
-        tc_refs=$(echo "$task_content" | grep '^test_case_ref:' | sed 's/^test_case_ref: *//' | tr -d '[]"') || true
+        tc_refs=$(echo "$task_content" | awk '
+          /^test_case_ref:/ {
+            in_tcr=1; val=$0; sub(/^test_case_ref: */,"",val); gsub(/[\[\]"]/,"",val)
+            if (val!="") { print val; in_tcr=0 }; next
+          }
+          in_tcr && /^  - / { val=$0; sub(/^  - /,"",val); print val; next }
+          in_tcr { in_tcr=0 }
+        ') || true
       fi
       while IFS= read -r tc_id; do
         tc_id="${tc_id//[[:space:]]/}"
@@ -398,7 +405,14 @@ cmd_tc_design() {
 
   # test_case_ref 已有内容则跳过（TC 已设计）
   local existing_tc=""
-  existing_tc=$(grep '^test_case_ref:' "$req_file" | sed 's/^test_case_ref: *//' | tr -d '[]" ') || true
+  existing_tc=$(awk '
+    /^test_case_ref:/ {
+      in_tcr=1; val=$0; sub(/^test_case_ref: */,"",val); gsub(/[ \[\]"]/,"",val)
+      if (val!="") { print val; in_tcr=0 }; next
+    }
+    in_tcr && /^  - / { val=$0; sub(/^  - /,"",val); if (val!="") { print val; in_tcr=0 }; next }
+    in_tcr { in_tcr=0 }
+  ' "$req_file" | head -1) || true
   if [[ -n "$existing_tc" ]]; then
     die "${req} 已有 TC（test_case_ref=${existing_tc}），无需重复设计。若需重新设计，请先清空该字段。"
   fi
