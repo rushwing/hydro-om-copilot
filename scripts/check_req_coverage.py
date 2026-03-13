@@ -195,24 +195,34 @@ def _tsx_files(directory: Path):
 
 
 def _extract_routes(result: ScanResult) -> None:
-    """Scan FastAPI route decorators in backend/"""
+    """Scan FastAPI route decorators in backend/, prepending APIRouter prefix."""
     route_re = re.compile(
         r'@\w+\.(get|post|put|delete|patch)\s*\(\s*["\']([^"\']+)["\']',
         re.IGNORECASE,
     )
+    # Matches: APIRouter(prefix="/some/path", ...) or APIRouter(prefix='/some/path', ...)
+    prefix_re = re.compile(r'APIRouter\s*\([^)]*prefix\s*=\s*["\']([^"\']*)["\']')
+
     for path in _py_files(ROOT / "backend"):
         try:
             text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             continue
+
+        # Extract router-level prefix declared in this file (empty string if none)
+        prefix_match = prefix_re.search(text)
+        router_prefix = prefix_match.group(1).rstrip("/") if prefix_match else ""
+
         for m in route_re.finditer(text):
             method = m.group(1).upper()
-            endpoint = m.group(2)
+            decorator_path = m.group(2)
+            # Compose full public path: prefix + decorator path
+            full_path = router_prefix + "/" + decorator_path.lstrip("/") if router_prefix else decorator_path
             lineno = text[: m.start()].count("\n") + 1
             result.artifacts.append(
                 CodeArtifact(
                     kind="route",
-                    name=f"{method} {endpoint}",
+                    name=f"{method} {full_path}",
                     file=path.relative_to(ROOT),
                     line=lineno,
                 )
@@ -366,16 +376,28 @@ def _artifact_matches_req(artifact: CodeArtifact, req: ReqDoc) -> bool:
 
 def match_artifacts_to_reqs(result: ScanResult) -> None:
     impl_reqs = [r for r in result.reqs if r.status in _IMPL_STATUSES]
-    all_reqs = result.reqs
 
     for artifact in result.artifacts:
         matched = None
-        for req in all_reqs:
-            if _artifact_matches_req(artifact, req):
+
+        # ── Pass 1: code_refs exact match across ALL REQs (highest priority) ──
+        # A future REQ may explicitly claim an artifact via code_refs even before
+        # it is implemented (e.g., backfilling docs for existing code).
+        for req in result.reqs:
+            if req.code_refs and _artifact_matches_req(artifact, req):
                 matched = req.req_id
-                artifact.matched_req = matched
                 break
 
+        # ── Pass 2: heuristic match restricted to IMPLEMENTED REQs only ───────
+        # Draft/ready REQs must NOT compete for existing artifacts via heuristics
+        # because their keyword overlap is coincidental, not intentional.
+        if matched is None:
+            for req in impl_reqs:
+                if not req.code_refs and _artifact_matches_req(artifact, req):
+                    matched = req.req_id
+                    break
+
+        artifact.matched_req = matched
         if matched is None:
             result.orphan_artifacts.append(artifact)
 
