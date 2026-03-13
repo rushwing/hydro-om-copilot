@@ -142,6 +142,7 @@ tasks/                  # 所有待执行工作项的根目录
 | `owner` | `unassigned` / `claude_code` / `openai_codex` |
 | `depends_on` | 顺序依赖项列表（所有项必须 `done` 才可认领），无则空数组 |
 | `test_case_ref` | 对应测试用例文档列表，例如 `[TC-001, TC-002]`；`test_designed` 状态必须非空 |
+| `pytest_ref` | **可选**。直接指向 pytest 测试方法的选择器列表（YAML block list），格式为 `tests/path/file.py::Class::method`。用于已实现 REQ 的回溯追踪，不替代 `test_case_ref`（TC 文档引用）。`xfail_ref` 字段可额外记录 `xfail(strict=True)` 的已知缺口。 |
 | `scope` | `frontend` / `backend` / `fullstack` / `docs` / `tests` |
 | `acceptance` | 验收标准摘要（一句话）|
 
