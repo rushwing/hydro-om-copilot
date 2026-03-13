@@ -3,7 +3,7 @@ harness_id: REQ-STD-001
 component: requirements / task routing
 owner: Engineering
 version: 0.1
-status: draft
+status: active
 last_reviewed: 2026-03-12
 ---
 
@@ -211,7 +211,7 @@ draft → ready → test_designed → in_progress → review → done
 - `draft → ready`：需求范围、验收标准已确认
 - `ready → test_designed`：TC 文档已创建，`test_case_ref` 非空
 - `ready → blocked`：发现外部依赖缺失
-- `test_designed → in_progress`：Agent 完成认领（branch + commit 原子操作）
+- `test_designed → in_progress`：Agent 完成认领（Claim PR auto-merge，见 §8.2）
 - `test_designed → blocked`：认领前发现依赖未完成
 - `in_progress → review`：实现完成，PR 已提
 - `in_progress → blocked`：开发中发现阻塞

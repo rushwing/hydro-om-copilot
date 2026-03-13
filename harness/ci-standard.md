@@ -92,8 +92,8 @@ jobs:
         # 输出可认领任务列表，供人工决定是否触发 Agent
 ```
 
-> `scripts/agent-loop.py` 当前为 stub（仅打印可认领任务列表）。
-> 实际 Agent 调用（`claude -p`）在人工确认后手动触发，直到流程稳定。
+> `scripts/agent-loop.py` 已实现（扫描并打印两类可认领任务列表）。
+> 实际 Agent 调用通过 `harness.sh tc-design / implement` 在人工确认后手动触发，直到 GitHub Action workflow 接入。
 
 ---
 
@@ -101,7 +101,6 @@ jobs:
 
 - [ ] GitHub Actions workflow 文件（`.github/workflows/`）
 - [ ] Pre-commit hook 安装脚本（`scripts/install-hooks.sh`）
-- [ ] `scripts/agent-loop.py` 完整实现
 - [ ] 测试失败时的处理流程与通知机制
 - [ ] Canary 预算监控接入
 

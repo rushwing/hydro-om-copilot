@@ -3,7 +3,7 @@ harness_id: TEST-001
 component: testing / verification
 owner: Engineering
 version: 0.1
-status: draft
+status: active
 last_reviewed: 2026-03-12
 ---
 
