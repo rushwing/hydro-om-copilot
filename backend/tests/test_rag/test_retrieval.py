@@ -246,3 +246,41 @@ async def test_aretrieve_empty_store_returns_empty():
     results = await retriever.aretrieve("any query")
 
     assert results == []
+
+
+@pytest.mark.asyncio
+async def test_rerank_is_called_and_changes_order():
+    """
+    _rerank() is invoked during aretrieve() and its output order is respected.
+
+    Patches app.rag.hybrid_retriever._rerank to:
+      1. Record that it was called.
+      2. Return documents in REVERSED order.
+
+    Asserts that the final result reflects the reranker's ordering, not the raw
+    RRF order — a silent reranker skip would return the un-reversed order and
+    fail the assertion on result[0].
+    """
+    from unittest.mock import patch as _patch
+
+    from app.config import settings
+
+    pool = [_doc(f"L2.TOPIC.{i:03d}", f"content {i}") for i in range(10)]
+    retriever = _mock_retriever("procedure", pool)
+
+    rerank_calls: list[tuple[str, list[str]]] = []
+
+    def _mock_rerank(query: str, docs: list) -> list:
+        rerank_calls.append((query, [d.metadata["doc_id"] for d in docs]))
+        return list(reversed(docs))  # flip order so the last doc becomes first
+
+    with _patch("app.rag.hybrid_retriever._rerank", side_effect=_mock_rerank):
+        results = await retriever.aretrieve("振动摆度异常", top_k=settings.reranker_top_k)
+
+    assert len(rerank_calls) == 1, "_rerank must be called exactly once per aretrieve()"
+    # After reversal, the last item in reranker input should appear first in output
+    input_ids = rerank_calls[0][1]
+    assert results[0]["doc_id"] == input_ids[-1], (
+        "reranker output order must be preserved — a silent reranker skip would "
+        "return the original RRF order and fail here"
+    )
