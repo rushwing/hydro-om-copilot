@@ -332,3 +332,49 @@ class TestCurrentLifecycle:
         mid_current = observed_during[0]
         assert mid_current is not None
         assert mid_current.unit_id == "#3机"  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# TestWorkerQueueConsumption
+# ---------------------------------------------------------------------------
+
+class TestWorkerQueueConsumption:
+    """Prove that _worker() actually drains _pending and calls the runner."""
+
+    @pytest.mark.asyncio
+    async def test_worker_dequeues_pending_and_calls_runner(self):
+        """
+        Enqueue one FaultSummary, run _worker() briefly, then cancel it.
+        Verifies that the worker popped the entry and called run_auto_diagnosis_streaming.
+        """
+        svc = _make_service()
+        consumed: list[str] = []
+
+        async def _mock_streaming(summary, store, session_id, on_phase=None, **kwargs):
+            consumed.append(summary.unit_id)
+            from app.store.diagnosis_store import AutoDiagnosisRecord
+            rec = AutoDiagnosisRecord(
+                session_id=session_id,
+                unit_id=summary.unit_id,
+                fault_types=summary.fault_types,
+                symptom_text=summary.symptom_text,
+            )
+            store.push(rec)
+            return rec
+
+        with patch(
+            "app.agents.auto_diagnosis.run_auto_diagnosis_streaming",
+            side_effect=_mock_streaming,
+        ):
+            svc.enqueue(_make_summary("#1机"))  # sets _wake automatically
+            worker_task = asyncio.create_task(svc._worker())
+            await asyncio.sleep(0.05)  # let worker drain the queue
+            worker_task.cancel()
+            try:
+                await worker_task
+            except asyncio.CancelledError:
+                pass
+
+        assert len(consumed) == 1, "runner must be called exactly once"
+        assert consumed[0] == "#1机"
+        assert len(svc._pending) == 0, "_pending must be empty after worker drains it"
