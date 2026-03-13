@@ -31,11 +31,18 @@ def _doc(doc_id: str, content: str = "text", route_keys=None) -> Document:
 
 
 def _mock_retriever(corpus: str, docs: list[Document]) -> HybridRetriever:
-    """Build a HybridRetriever with mocked vector store and BM25."""
+    """
+    Build a HybridRetriever whose vector store and BM25 honour the k / top_k
+    arguments so that top_k-contract tests get accurate candidate pool sizes.
+    """
     mock_vs = AsyncMock()
-    mock_vs.asimilarity_search = AsyncMock(return_value=docs)
+    mock_vs.asimilarity_search = AsyncMock(
+        side_effect=lambda query, k=10: docs[:k]
+    )
     mock_bm25 = MagicMock()
-    mock_bm25.retrieve = MagicMock(return_value=docs)
+    mock_bm25.retrieve = MagicMock(
+        side_effect=lambda query, top_k=10: docs[:top_k]
+    )
     return HybridRetriever(mock_vs, mock_bm25, corpus)
 
 
@@ -158,21 +165,77 @@ def test_matches_topic_no_route_keys():
 
 @pytest.mark.asyncio
 async def test_aretrieve_returns_top_k():
-    """aretrieve returns at most reranker_top_k results from the fused set."""
+    """
+    When top_k == reranker_top_k and enough documents are available, aretrieve
+    returns exactly reranker_top_k results with the required dict keys.
+
+    Uses a pool larger than reranker_top_k so the output is not artificially
+    capped by pool size — this test guards the lower-bound contract too.
+    """
     from app.config import settings
 
-    procedure_docs = [
-        _doc(f"L2.TOPIC.{i:03d}", f"content {i}") for i in range(5)
-    ]
-    retriever = _mock_retriever("procedure", procedure_docs)
+    # Pool size > reranker_top_k so the cap is the reranker limit, not pool size
+    pool = [_doc(f"L2.TOPIC.{i:03d}", f"content {i}") for i in range(20)]
+    top_k = settings.reranker_top_k  # align so the bound is unambiguous
+    retriever = _mock_retriever("procedure", pool)
 
-    results = await retriever.aretrieve("振动摆度异常", top_k=5)
+    results = await retriever.aretrieve("振动摆度异常", top_k=top_k)
 
     assert isinstance(results, list)
-    assert len(results) <= settings.reranker_top_k
+    assert len(results) == top_k, (
+        f"Expected exactly {top_k} results (reranker_top_k={settings.reranker_top_k}), "
+        f"got {len(results)}"
+    )
     for item in results:
         assert "doc_id" in item
         assert "content" in item
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "aretrieve() final slice uses settings.reranker_top_k, not the top_k argument. "
+        "When dense and sparse return disjoint sets (the realistic hybrid case), "
+        "RRF produces up to 2*top_k unique candidates; the final fused[:reranker_top_k] "
+        "then returns reranker_top_k=5 items even when top_k=2, violating the "
+        "'retrieve(query, k) → k docs' contract in REQ-003. "
+        "Fix: replace `fused[:settings.reranker_top_k]` with "
+        "`fused[:min(top_k, settings.reranker_top_k)]`."
+    ),
+)
+@pytest.mark.asyncio
+async def test_aretrieve_top_k_respected():
+    """
+    When top_k < reranker_top_k the output must be capped at top_k.
+
+    Uses disjoint dense/sparse document sets to simulate realistic hybrid
+    retrieval (different ranking algorithms surface different docs).  With
+    top_k=2, dense returns docs[0:2] and sparse returns docs[10:12] — four
+    unique candidates after RRF.  The final fused[:reranker_top_k] returns all
+    four, which violates the top_k=2 contract.
+
+    Currently xfail: the implementation always returns reranker_top_k items.
+    """
+    pool = [_doc(f"L2.TOPIC.{i:03d}", f"content {i}") for i in range(20)]
+    dense_pool = pool[:10]   # dense retrieves from first half
+    sparse_pool = pool[10:]  # sparse retrieves from second half — fully disjoint
+
+    mock_vs = AsyncMock()
+    mock_vs.asimilarity_search = AsyncMock(
+        side_effect=lambda query, k=10: dense_pool[:k]
+    )
+    mock_bm25 = MagicMock()
+    mock_bm25.retrieve = MagicMock(
+        side_effect=lambda query, top_k=10: sparse_pool[:top_k]
+    )
+    retriever = HybridRetriever(mock_vs, mock_bm25, "procedure")
+
+    results = await retriever.aretrieve("振动摆度异常", top_k=2)
+
+    assert len(results) <= 2, (
+        f"Expected at most 2 results for top_k=2, got {len(results)}. "
+        "aretrieve() must cap final output at top_k, not only at reranker_top_k."
+    )
 
 
 @pytest.mark.asyncio
