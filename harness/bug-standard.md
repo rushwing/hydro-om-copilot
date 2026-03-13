@@ -3,7 +3,7 @@ harness_id: BUG-STD-001
 component: bugs / defect tracking
 owner: Engineering
 version: 0.1
-status: draft
+status: active
 last_reviewed: 2026-03-12
 ---
 
