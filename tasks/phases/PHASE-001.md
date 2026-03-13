@@ -26,7 +26,7 @@ priority: P1
 
 ## Exit Criteria
 
-- POST /diagnosis/run 返回完整 DiagnosisResult（root_causes、checklist、report 字段均非空）
+- POST /diagnosis/run 返回完整 DiagnosisResult（root_causes、check_steps、report_draft 字段均非空）
 - 前端 SSE 流式渲染全程无断流
 - RiskBadge 在深色主题下可见（使用本地 darkRiskColors）
 
