@@ -2,15 +2,15 @@
 harness_id: CI-STD-001
 component: CI / quality gates / automation
 owner: Engineering
-version: 0.1
-status: stub
-last_reviewed: 2026-03-12
+version: 0.2
+status: active
+last_reviewed: 2026-03-13
 ---
 
-# Harness Standard — CI 与质量门禁规程 [STUB]
+# Harness Standard — CI 与质量门禁规程
 
-> **当前状态：stub。** 记录已知的 pre-commit 要求和 PR gate 原则。
-> GitHub Actions workflow 和 pre-commit hook 安装脚本待补充。
+> **v0.2**：补充 REQ 覆盖率门禁（`check_req_coverage.py`）与 `draft → ready` 前置检查规程。
+> GitHub Actions workflow 文件待实现（见 REQ-012）。
 
 ---
 
@@ -52,6 +52,7 @@ cd frontend && npm run lint              # eslint
 | 后端 format | ruff format | 手动运行 |
 | 前端 type-check | tsc | 手动运行 |
 | 前端 lint | eslint | 手动运行 |
+| **REQ 覆盖率** | **check_req_coverage.py** | **手动运行（待接入 CI）** |
 | 后端单元测试 | pytest | 🔲 CI 未接入 |
 | 前端单元测试 | vitest | 🔲 未安装 |
 | E2E smoke | playwright | 🔲 未安装 |
@@ -63,6 +64,64 @@ cd frontend && npm run lint              # eslint
 AUTO_RANDOM_PROBLEMS_GEN=false    # 禁止后台轮询
 SENSOR_POLL_INTERVAL=999
 ANTHROPIC_API_KEY=mock            # 非 canary 环境
+```
+
+---
+
+---
+
+## REQ 覆盖率门禁
+
+### 目的
+
+防止"代码超前于需求"（实现已合并但无对应 REQ）和"需求字段不完整就流转状态"两类问题。
+
+### 脚本
+
+```bash
+# 位置：scripts/check_req_coverage.py
+python3 scripts/check_req_coverage.py          # 报告模式（人工查看）
+python3 scripts/check_req_coverage.py --strict  # CI 模式（有缺口时 exit 1）
+python3 scripts/check_req_coverage.py --verbose # 显示完整 artifact → REQ 匹配明细
+```
+
+### 检查内容
+
+**Code → REQ（孤儿检测）**：已实现 artifact 必须有对应 REQ
+
+| Artifact 类型 | 提取方式 |
+|---|---|
+| FastAPI 路由 | `@router.{method}("path")` |
+| React 组件 | `export (function\|const) ComponentName` |
+| LangGraph 节点 | `graph.add_node("name")` |
+| MCP 工具函数 | `@mcp.tool` 装饰器 |
+
+**REQ → Code（幽灵检测）**：`done`/`in_progress` 且无 `code_refs` 的 REQ 必须有 artifact 匹配
+
+**Frontmatter 完整性**：所有 REQ 文档的 10 个字段合法（触发 `draft → ready` 的强制前置条件）
+
+### 匹配优先级
+
+```
+code_refs 精确文件路径  >  字面子串匹配  >  路由路径分段  >  关键词 token 集合
+```
+
+有 `code_refs` 的 REQ 跳过关键词匹配，避免散文描述产生假阳性。有 `code_refs` 的 REQ 同时排除幽灵检测（Python 类/脚本不产生可扫描 artifact）。
+
+### 何时运行
+
+| 时机 | 命令 | 说明 |
+|---|---|---|
+| 将 REQ 从 `draft` 改为 `ready` 前 | `--strict` | frontmatter 检查，见 requirement-standard.md §6.4 |
+| 提 PR 合并到 `main` 前 | `--strict` | 防止孤儿 artifact 进入主干 |
+| 接入 CI 后（见 REQ-012）| `--strict` | 自动阻断不合规 PR |
+
+### CI 配置（待实现，见 REQ-012）
+
+```yaml
+# .github/workflows/agent-loop.yml（片段）
+- name: REQ coverage check
+  run: python3 scripts/check_req_coverage.py --strict
 ```
 
 ---
@@ -99,10 +158,11 @@ jobs:
 
 ## 待补充
 
-- [ ] GitHub Actions workflow 文件（`.github/workflows/`）
+- [ ] GitHub Actions workflow 文件（`.github/workflows/`，见 REQ-012）
 - [ ] Pre-commit hook 安装脚本（`scripts/install-hooks.sh`）
 - [ ] 测试失败时的处理流程与通知机制
 - [ ] Canary 预算监控接入
+- [ ] `check_req_coverage.py` 扩展：Python 类/函数提取器（覆盖 HybridRetriever、FaultAggregator 等）
 
 ---
 
@@ -111,3 +171,4 @@ jobs:
 | 版本 | 日期 | 变更摘要 |
 |---|---|---|
 | 0.1 | 2026-03-12 | 初始 stub；记录 pre-commit 命令、PR gate 状态和 Agent Loop 设计草稿 |
+| 0.2 | 2026-03-13 | 补充 REQ 覆盖率门禁规程（check_req_coverage.py）；将 frontmatter 检查绑定为 draft→ready 前置条件；更新 PR Gate 表格；status 升级为 active |

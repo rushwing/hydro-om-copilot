@@ -208,7 +208,7 @@ draft → ready → test_designed → in_progress → review → done
                   blocked ←→ ready / test_designed
 ```
 
-- `draft → ready`：需求范围、验收标准已确认
+- `draft → ready`：需求范围、验收标准已确认，且 `check_req_coverage.py` 的 frontmatter 检查通过（10 字段完整、枚举值合法、`depends_on` 引用存在）
 - `ready → test_designed`：TC 文档已创建，`test_case_ref` 非空
 - `ready → blocked`：发现外部依赖缺失
 - `test_designed → in_progress`：Agent 完成认领（Claim PR auto-merge，见 §8.2）
@@ -226,6 +226,28 @@ draft → ready → test_designed → in_progress → review → done
 - 不允许 `ready → in_progress`（必须经过 `test_designed`）
 - 不允许 `test_case_ref` 为空时迁移到 `test_designed`
 - 不允许两个 Agent 同时把同一项从 `test_designed` 改成 `in_progress`
+- 不允许 frontmatter 检查未通过时迁移到 `ready`（`check_req_coverage.py --strict` 报错即阻断）
+
+### 6.4 `draft → ready` 前置检查清单
+
+Agent 或人工将需求从 `draft` 改为 `ready` 前，必须确认：
+
+```bash
+python3 scripts/check_req_coverage.py --strict
+```
+
+检查项（脚本自动验证）：
+
+- [ ] 10 个 frontmatter 字段全部存在（`req_id` / `title` / `status` / `priority` / `phase` / `owner` / `depends_on` / `test_case_ref` / `scope` / `acceptance`）
+- [ ] `status` ∈ `{draft, ready, test_designed, in_progress, blocked, review, done}`
+- [ ] `scope` ∈ `{frontend, backend, fullstack, docs, tests}`
+- [ ] `priority` ∈ `{P0, P1, P2, P3}`
+- [ ] `depends_on` 中的每个 REQ 编号在 `tasks/` 中存在
+
+检查项（人工确认）：
+
+- [ ] `acceptance` 描述可被单一验收口径判断（见 §5.3）
+- [ ] 范围足够小，可被单个 Agent 独立完成
 
 ---
 
