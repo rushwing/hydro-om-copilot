@@ -61,12 +61,14 @@ export function InputPanel({ onSubmit, onAbort, isRunning }: InputPanelProps) {
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
+    if (isRunning) return;
     const file = e.dataTransfer.files?.[0];
     if (file && file.type.startsWith("image/")) processImageFile(file);
   };
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    if (isRunning) return;
     setIsDragging(true);
   };
 
@@ -88,7 +90,7 @@ export function InputPanel({ onSubmit, onAbort, isRunning }: InputPanelProps) {
   };
 
   const chipBase =
-    "px-2.5 py-1 rounded text-xs font-medium border transition-all cursor-pointer select-none";
+    "px-2.5 py-1 rounded text-xs font-medium border transition-all cursor-pointer select-none disabled:opacity-40 disabled:cursor-not-allowed";
   const chipInactive = `${chipBase} border-surface-border bg-surface-elevated text-text-secondary hover:border-amber/50 hover:text-text-primary`;
   const chipActive = `${chipBase} border-amber bg-amber/10 text-amber`;
 
@@ -202,7 +204,8 @@ export function InputPanel({ onSubmit, onAbort, isRunning }: InputPanelProps) {
             <button
               type="button"
               onClick={removeImage}
-              className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white text-xs leading-none hover:bg-red-600"
+              disabled={isRunning}
+              className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white text-xs leading-none hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               ×
             </button>
@@ -216,10 +219,12 @@ export function InputPanel({ onSubmit, onAbort, isRunning }: InputPanelProps) {
             onDragOver={handleDragOver}
             onDragLeave={() => setIsDragging(false)}
             onClick={() => !isRunning && fileRef.current?.click()}
-            className={`flex cursor-pointer flex-col items-center justify-center rounded border-2 border-dashed py-4 text-xs transition-colors ${
-              isDragging
-                ? "border-amber bg-amber/5 text-amber"
-                : "border-surface-border bg-surface-elevated text-text-muted hover:border-amber/40 hover:text-text-secondary"
+            className={`flex flex-col items-center justify-center rounded border-2 border-dashed py-4 text-xs transition-colors ${
+              isRunning
+                ? "cursor-not-allowed border-surface-border bg-surface-elevated text-text-muted opacity-40"
+                : isDragging
+                ? "cursor-pointer border-amber bg-amber/5 text-amber"
+                : "cursor-pointer border-surface-border bg-surface-elevated text-text-muted hover:border-amber/40 hover:text-text-secondary"
             }`}
           >
             <span className="text-lg mb-1">📎</span>
