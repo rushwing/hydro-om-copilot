@@ -86,10 +86,17 @@ async def llm_json(
     text = re.sub(r"\s*```$", "", text)
 
     try:
-        return json.loads(text)
+        parsed = json.loads(text)
     except json.JSONDecodeError as exc:
         _logger.warning("json.loads failed (%s), attempting json_repair", exc)
         repaired = repair_json(text, return_objects=True)
         if isinstance(repaired, dict):
             return repaired
         raise
+
+    if isinstance(parsed, list):
+        _logger.warning(
+            "llm_json: expected dict, got list (len=%d); using first element", len(parsed)
+        )
+        return parsed[0] if parsed and isinstance(parsed[0], dict) else {}
+    return parsed
