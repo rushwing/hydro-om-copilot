@@ -4,7 +4,7 @@ component: requirements / task routing
 owner: Engineering
 version: 0.7
 status: active
-last_reviewed: 2026-03-12
+last_reviewed: 2026-03-15
 ---
 
 # Harness Standard — 需求管理与多 Agent 任务认领规程

@@ -2,7 +2,7 @@
 harness_id: CI-STD-001
 component: CI / quality gates / automation
 owner: Engineering
-version: 0.4
+version: 0.6
 status: active
 last_reviewed: 2026-03-15
 ---
@@ -217,3 +217,4 @@ concurrency:
 | 0.3 | 2026-03-14 | 落地 REQ-012：创建 `.github/workflows/agent-loop.yml`，5 个 job（backend-lint、backend-tests、frontend-checks、req-coverage、agent-loop）；PR Gate 全栏更新为 CI 已接入 |
 | 0.4 | 2026-03-15 | 落地 REQ-026：新增 `e2e-smoke` CI job（Playwright，4 条 pending-archive 用例）；PR Gate E2E 行标注 ✅ CI job 已接入 |
 | 0.5 | 2026-03-15 | 新增定时构建节（Daily P0+P1、Weekly 全量）；PR gate E2E 收窄为 P0 only（`e2e:p0`）；定义自动开 issue 规格；声明不设 Release 规则；新增并发控制说明；workflow 新增 `daily-e2e` / `weekly-e2e` jobs |
+| 0.6 | 2026-03-15 | PR Gate 表新增 TC 就绪性行（`check_tc_readiness.py` / CI job `check-tc-readiness`）；frontmatter version 与 changelog 对齐 |
