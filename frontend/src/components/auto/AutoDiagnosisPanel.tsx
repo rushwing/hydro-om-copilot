@@ -133,35 +133,58 @@ function EpochIndicator({ status }: { status: AutoDiagnosisStatus }) {
   );
 }
 
-function UnitCooldownGrid({ cooldowns }: { cooldowns: Record<string, number> }) {
+interface UnitStatusGridProps {
+  cooldowns: Record<string, number>;
+  pendingQueue: PendingFaultItem[];
+  current: CurrentDiagnosisInfo | null;
+  epochNum: number;
+}
+
+function UnitStatusGrid({ cooldowns, pendingQueue, current, epochNum }: UnitStatusGridProps) {
   const units = ["#1机", "#2机", "#3机", "#4机"];
+  // Units with a fault waiting in queue
+  const faultUnits = new Set(pendingQueue.map((f) => f.unit_id));
+  // Unit actively being diagnosed also counts as a red / unresolved fault state
+  const diagnosingUnit = current?.unit_id ?? null;
+  // Before any epoch completes, show neutral state for all units
+  const hasData = epochNum > 0;
+
   return (
     <div className="rounded-lg border border-surface-border bg-surface-card p-4">
-      <h3
-        className="font-display text-xs uppercase tracking-wider text-text-muted mb-1"
-        title="冷却期内同一机组不会重复触发诊断，避免报告刷屏。"
-      >
-        各机组诊断状态
+      <h3 className="font-display text-xs uppercase tracking-wider text-text-muted mb-1">
+        各机组故障状态
       </h3>
-      <p className="text-xs text-text-muted mb-3">各机组共享同一采集周期</p>
+      <p className="text-xs text-text-muted mb-3">
+        {hasData ? "红色：存在待处理故障；绿色：暂无故障" : "首轮采集尚未完成，等待数据…"}
+      </p>
       <div className="grid grid-cols-2 gap-2">
         {units.map((uid) => {
-          const remaining = cooldowns[uid] ?? 0;
-          const ok = remaining === 0;
+          const hasFault = faultUnits.has(uid);
+          const isDiagnosing = diagnosingUnit === uid;
+          const isRed = hasFault || isDiagnosing;
+          const cooling = (cooldowns[uid] ?? 0) > 0;
           return (
             <div
               key={uid}
               className={`rounded border px-3 py-2 flex items-center justify-between text-xs ${
-                ok
-                  ? "border-emerald-800 bg-emerald-950/30 text-emerald-400"
-                  : "border-surface-border bg-surface-elevated text-text-secondary"
+                !hasData
+                  ? "border-surface-border bg-surface-elevated text-text-muted"
+                  : isRed
+                  ? "border-red-800 bg-red-950/30 text-red-400"
+                  : "border-emerald-800 bg-emerald-950/30 text-emerald-400"
               }`}
             >
               <span className="font-medium">{uid}</span>
-              {ok ? (
-                <span className="text-emerald-400">✓ 可诊断</span>
+              {!hasData ? (
+                <span className="text-text-muted">—</span>
+              ) : isDiagnosing ? (
+                <span className="text-red-400 animate-pulse">⟳ 诊断中</span>
+              ) : hasFault ? (
+                <span className="text-red-400">⚠ 待处理</span>
+              ) : cooling ? (
+                <span className="font-mono text-text-secondary">⏱ {cooldowns[uid]}s</span>
               ) : (
-                <span className="font-mono text-amber">⏱ {remaining}s</span>
+                <span className="text-emerald-400">✓ 正常</span>
               )}
             </div>
           );
@@ -314,6 +337,8 @@ function CurrentDiagnosisCard({ current }: { current: CurrentDiagnosisInfo }) {
           <span className="text-text-secondary font-medium">{current.unit_id}</span>
           <span className="text-text-muted">·</span>
           <span className="text-text-muted">{current.fault_types.join(", ")}</span>
+          <span className="text-text-muted">·</span>
+          <span className="font-mono text-text-muted">{relativeTime(current.started_at)}</span>
         </div>
       </div>
 
@@ -398,12 +423,17 @@ export function AutoDiagnosisPanel({ isManualRunning = false }: AutoDiagnosisPan
 
       {status && (
         <>
+          <UnitStatusGrid
+            cooldowns={status.unit_cooldowns}
+            pendingQueue={status.pending_queue}
+            current={status.current}
+            epochNum={status.epoch_num}
+          />
           <EpochIndicator status={status} />
-          <UnitCooldownGrid cooldowns={status.unit_cooldowns} />
-          {status.current && <CurrentDiagnosisCard current={status.current} />}
           {status.pending_queue.length > 0 && (
             <FaultQueueList queue={status.pending_queue} />
           )}
+          {status.current && <CurrentDiagnosisCard current={status.current} />}
         </>
       )}
 
