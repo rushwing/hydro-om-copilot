@@ -334,6 +334,86 @@ def check_tc_frontmatter(result: CheckResult) -> None:
                 )
 
 
+# ─── E. tc_policy 逐步还账检查 ───────────────────────────────────────────────
+
+# BUG statuses that trigger the backfill obligation
+# (open/confirmed are pre-claim; debt must be paid once work starts)
+BUG_BACKFILL_TRIGGER_STATUSES = {"in_progress", "fixed", "regressing", "closed"}
+
+def _build_req_index() -> dict[str, dict[str, str]]:
+    """Return mapping req_id -> frontmatter dict for all REQ-*.md files."""
+    index: dict[str, dict[str, str]] = {}
+    search_dirs = [
+        ROOT / "tasks" / "features",
+        ROOT / "tasks" / "archive" / "done",
+        ROOT / "tasks" / "archive" / "cancelled",
+    ]
+    for d in search_dirs:
+        if not d.exists():
+            continue
+        for path in sorted(d.glob("REQ-*.md")):
+            try:
+                text = path.read_text(encoding="utf-8")
+                fm = _parse_frontmatter(text)
+                req_id = fm.get("req_id", "").strip()
+                if req_id:
+                    index[req_id] = fm
+            except Exception:
+                pass
+    return index
+
+
+def check_backfill(result: CheckResult, req_index: dict[str, dict[str, str]]) -> None:
+    """E. Verify that active BUGs have triggered tc_policy backfill on related REQs.
+
+    Per bug-standard.md §2.1: when a BUG references a REQ that has no tc_policy
+    field (or tc_policy=optional), opening the BUG must also backfill that REQ
+    to tc_policy=required (or exempt with reason).
+
+    We enforce this once the BUG enters an active fix status (in_progress+), so
+    that open/confirmed BUGs don't immediately block before the developer starts.
+    """
+    search_dirs = [
+        ROOT / "tasks" / "bugs",
+        ROOT / "tasks" / "archive" / "done",
+    ]
+    for d in search_dirs:
+        if not d.exists():
+            continue
+        for path in sorted(d.glob("BUG-*.md")):
+            try:
+                text = path.read_text(encoding="utf-8")
+            except Exception:
+                continue
+
+            fm = _parse_frontmatter(text)
+            status = fm.get("status", "").strip()
+
+            # Only enforce once the fix is actively in progress
+            if status not in BUG_BACKFILL_TRIGGER_STATUSES:
+                continue
+
+            raw_related = fm.get("related_req", "[]")
+            related_reqs = [
+                r for r in _parse_id_list(raw_related) if r.startswith("REQ-")
+            ]
+
+            for req_id in related_reqs:
+                req_fm = req_index.get(req_id)
+                if req_fm is None:
+                    # REQ not found — already caught by check_bug_frontmatter
+                    continue
+                req_tc_policy = req_fm.get("tc_policy", "").strip()
+                # Debt is unpaid if field is absent or explicitly optional
+                if req_tc_policy in ("", "optional"):
+                    result.error(
+                        f"{path.name} (status={status}): related_req {req_id} 的 "
+                        f"tc_policy 未回填（当前='{req_tc_policy or '缺失'}'）。"
+                        f"按 bug-standard.md §2.1，认领修复时须将 {req_id} 的 "
+                        f"tc_policy 改为 required（或 exempt+理由）。"
+                    )
+
+
 # ─── 报告输出 ─────────────────────────────────────────────────────────────────
 
 def print_report(result: CheckResult) -> int:
@@ -369,13 +449,15 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    tc_index = _build_tc_index()
+    tc_index  = _build_tc_index()
+    req_index = _build_req_index()
 
     result = CheckResult()
     check_req_policy(result)
     check_bug_policy(result)
     check_tc_refs(result, tc_index)
     check_tc_frontmatter(result)
+    check_backfill(result, req_index)
 
     exit_code = print_report(result)
 

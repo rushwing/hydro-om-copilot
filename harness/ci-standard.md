@@ -53,6 +53,7 @@ cd frontend && npm run lint              # eslint
 | 前端 type-check | tsc | ✅ CI job: `frontend-checks` |
 | 前端 lint | eslint | ✅ CI job: `frontend-checks` |
 | **REQ 覆盖率** | **check_req_coverage.py** | ✅ CI job: `req-coverage` |
+| **TC 就绪性** | **check_tc_readiness.py** | ✅ CI job: `check-tc-readiness` |
 | 后端单元测试 | pytest | ✅ CI job: `backend-tests` |
 | 前端单元测试 | vitest | ✅ CI job: `frontend-checks` |
 | E2E P0 smoke | playwright `--grep @P0` | ✅ CI job: `e2e-smoke`（`npm run e2e:p0`，REQ-026）|
