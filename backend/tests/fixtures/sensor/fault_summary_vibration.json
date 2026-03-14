@@ -1,0 +1,41 @@
+{
+  "unit_id": "#1机",
+  "fault_types": ["vibration_swing"],
+  "symptom_text": "#1机振动摆度超限：X方向摆度0.38mm（阈值0.25mm），Y方向摆度0.31mm，当前转速稳定在150rpm。",
+  "anomaly_points": [
+    {
+      "tag": "VB_1_X",
+      "name_cn": "1号机X方向摆度",
+      "value": 0.38,
+      "alarm_state": "alarm",
+      "trend": "rising",
+      "thresholds": {
+        "warn": 0.20,
+        "alarm": 0.25,
+        "trip": 0.40,
+        "unit": "mm"
+      }
+    },
+    {
+      "tag": "VB_1_Y",
+      "name_cn": "1号机Y方向摆度",
+      "value": 0.31,
+      "alarm_state": "alarm",
+      "trend": "stable",
+      "thresholds": {
+        "warn": 0.20,
+        "alarm": 0.25,
+        "trip": 0.40,
+        "unit": "mm"
+      }
+    }
+  ],
+  "sensor_reports": [
+    {
+      "sensor_type": "vibration",
+      "unit_id": "#1机",
+      "fault_detected": true,
+      "anomaly_points": []
+    }
+  ]
+}

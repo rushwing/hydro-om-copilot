@@ -1,0 +1,46 @@
+{
+  "session_id": "test-session-001",
+  "unit_id": "#1机",
+  "topic": "vibration_swing",
+  "root_causes": [
+    {
+      "rank": 1,
+      "title": "导叶开度不一致",
+      "probability": 0.85,
+      "evidence": ["导叶开度反馈偏差 >2%", "振动频谱显示1×转频分量增大"],
+      "parameters_to_confirm": ["实际导叶开度", "开度传感器信号", "导叶接力器行程"]
+    },
+    {
+      "rank": 2,
+      "title": "转轮动平衡偏差",
+      "probability": 0.45,
+      "evidence": ["振幅随负荷增大", "轴线偏移超限"],
+      "parameters_to_confirm": ["动平衡记录", "轴线测量值"]
+    }
+  ],
+  "check_steps": [
+    {
+      "step": 1,
+      "action": "检查导叶开度反馈",
+      "expected": "各导叶开度偏差 <0.5%",
+      "caution": null
+    },
+    {
+      "step": 2,
+      "action": "测量振动摆度实时值",
+      "expected": "X/Y 方向摆度 <0.25mm",
+      "caution": "测量时机组不得升负荷"
+    },
+    {
+      "step": 3,
+      "action": "检查导叶接力器行程是否同步",
+      "expected": "行程偏差 <1mm",
+      "caution": null
+    }
+  ],
+  "risk_level": "high",
+  "escalation_required": false,
+  "escalation_reason": null,
+  "report_draft": "经诊断，#1机振动异常主要原因为导叶开度不一致（概率85%）。建议立即检查导叶开度反馈，并测量振动摆度实时值。若检查后问题未解决，需进一步排查转轮动平衡。",
+  "sources": ["REQ-001", "SOP-振动-001", "CASE-振动-2024-001"]
+}

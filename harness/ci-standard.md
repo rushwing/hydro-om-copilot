@@ -2,15 +2,15 @@
 harness_id: CI-STD-001
 component: CI / quality gates / automation
 owner: Engineering
-version: 0.2
+version: 0.3
 status: active
 last_reviewed: 2026-03-13
 ---
 
 # Harness Standard — CI 与质量门禁规程
 
-> **v0.2**：补充 REQ 覆盖率门禁（`check_req_coverage.py`）与 `draft → ready` 前置检查规程。
-> GitHub Actions workflow 文件待实现（见 REQ-012）。
+> **v0.3**：补充 REQ 覆盖率门禁（`check_req_coverage.py`）与 `draft → ready` 前置检查规程。
+> GitHub Actions workflow 已实现（`.github/workflows/agent-loop.yml`，REQ-012 ✅）。
 
 ---
 
@@ -48,14 +48,14 @@ cd frontend && npm run lint              # eslint
 
 | 检查项 | 工具 | 当前状态 |
 |---|---|---|
-| 后端 lint | ruff | 手动运行 |
-| 后端 format | ruff format | 手动运行 |
-| 前端 type-check | tsc | 手动运行 |
-| 前端 lint | eslint | 手动运行 |
-| **REQ 覆盖率** | **check_req_coverage.py** | **手动运行（待接入 CI）** |
-| 后端单元测试 | pytest | 🔲 CI 未接入 |
-| 前端单元测试 | vitest | 🔲 未安装 |
-| E2E smoke | playwright | 🔲 未安装 |
+| 后端 lint | ruff | ✅ CI job: `backend-lint` |
+| 后端 format | ruff format | ✅ CI job: `backend-lint` |
+| 前端 type-check | tsc | ✅ CI job: `frontend-checks` |
+| 前端 lint | eslint | ✅ CI job: `frontend-checks` |
+| **REQ 覆盖率** | **check_req_coverage.py** | ✅ CI job: `req-coverage` |
+| 后端单元测试 | pytest | ✅ CI job: `backend-tests` |
+| 前端单元测试 | vitest | ✅ CI job: `frontend-checks` |
+| E2E smoke | playwright | ✅ 已安装（`npm run e2e`）；🔲 CI job 待接入 |
 | 真实 LLM canary | pytest -m canary | 🔲 仅 nightly/手动 |
 
 ### 测试环境变量（CI 必须设置）
@@ -158,7 +158,7 @@ jobs:
 
 ## 待补充
 
-- [ ] GitHub Actions workflow 文件（`.github/workflows/`，见 REQ-012）
+- [x] GitHub Actions workflow 文件（`.github/workflows/agent-loop.yml`，REQ-012 已完成）
 - [ ] Pre-commit hook 安装脚本（`scripts/install-hooks.sh`）
 - [ ] 测试失败时的处理流程与通知机制
 - [ ] Canary 预算监控接入
@@ -172,3 +172,4 @@ jobs:
 |---|---|---|
 | 0.1 | 2026-03-12 | 初始 stub；记录 pre-commit 命令、PR gate 状态和 Agent Loop 设计草稿 |
 | 0.2 | 2026-03-13 | 补充 REQ 覆盖率门禁规程（check_req_coverage.py）；将 frontmatter 检查绑定为 draft→ready 前置条件；更新 PR Gate 表格；status 升级为 active |
+| 0.3 | 2026-03-14 | 落地 REQ-012：创建 `.github/workflows/agent-loop.yml`，5 个 job（backend-lint、backend-tests、frontend-checks、req-coverage、agent-loop）；PR Gate 全栏更新为 CI 已接入 |

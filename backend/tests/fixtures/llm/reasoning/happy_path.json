@@ -1,0 +1,14 @@
+{
+  "root_causes": [
+    {
+      "rank": 1,
+      "title": "导叶开度不一致",
+      "probability": 0.85,
+      "evidence": ["导叶开度反馈偏差 >2%", "振动频谱显示1×转频分量增大"],
+      "parameters_to_confirm": ["实际导叶开度", "开度传感器信号"]
+    }
+  ],
+  "risk_level": "high",
+  "escalation_required": false,
+  "escalation_reason": null
+}

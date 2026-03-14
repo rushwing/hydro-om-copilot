@@ -1,0 +1,8 @@
+{
+  "parsed_symptom": {
+    "unit_id": "#1机",
+    "symptom_description": "导叶开度异常，振动超标",
+    "affected_subsystems": ["governor", "rotating_parts"]
+  },
+  "topic": "vibration_swing"
+}

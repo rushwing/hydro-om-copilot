@@ -67,6 +67,20 @@ last_reviewed: 2026-03-12
 
 **失败归因边界**：Layer 3 失败 → 前端渲染、路由或状态流转问题，API 契约已由 Layer 2 保证。
 
+### 2.5 覆盖率策略
+
+| 层 | 主指标 | 初期目标 | 商用目标 |
+|----|--------|----------|----------|
+| Unit | 代码行覆盖（v8） | 70% | 90% |
+| Integration | API 契约场景（TC 覆盖率） | 关键路由 80% | 100% |
+| E2E | 用户故事场景（TC 覆盖率） | 核心 happy path | 全路径 |
+
+场景覆盖口径：`tasks/test-cases/` 中 TC 状态为 passed 的比例。
+
+行覆盖为辅助指标，不作为主要门禁；场景覆盖完整性优先于行覆盖数字。
+
+---
+
 ### 2.4 真实 LLM Canary
 
 | 项目 | 内容 |
@@ -139,10 +153,17 @@ last_reviewed: 2026-03-12
 
 ### 5.1 Fixture 目录
 
-- **前端 fixture**：`[待填写路径]`
-- **后端 fixture**：`[待填写路径]`
-- **LLM 输出 fixture**：`[待填写路径]`
-- **E2E 场景数据**：`[待填写路径]`
+- **前端 fixture**：`frontend/tests/fixtures/`
+  - `sse/happy_path.txt` — 完整 SSE 事件流（status/token/result/done）
+  - `api/diagnosis_result.json` — 完整 DiagnosisResult 样本（含 root_causes/check_steps/sources）
+- **后端 fixture**：`backend/tests/fixtures/`
+  - `sse/happy_path.txt` — 后端 SSE 原始文本，供 Playwright `page.route()` 使用
+  - `llm/symptom_parser/happy_path.json` — symptom_parser 节点输出 stub
+  - `llm/reasoning/happy_path.json` — reasoning 节点输出 stub
+  - `llm/report_gen/happy_path.json` — report_gen 节点输出 stub
+  - `sensor/fault_summary_vibration.json` — 振动故障 FaultSummary fixture
+- **LLM 输出 fixture**：`backend/tests/fixtures/llm/`（按节点分目录，每个场景一个 JSON）
+- **E2E 场景数据**：`frontend/tests/fixtures/sse/`（SSE 文本文件，供 Playwright 拦截返回）
 
 ### 5.2 命名约定
 
@@ -258,16 +279,29 @@ last_reviewed: 2026-03-12
 - **SSE mock 方式**：`page.route('/diagnosis/run', handler)` 原生拦截，返回固定 SSE 文本 fixture
 - **不引入 MSW**：`diagnosisApi.ts` 使用 `fetch + ReadableStream` 自定义解析，MSW 模拟 streaming response 的成本远超收益；组件测试直接 `vi.mock('@/services/diagnosisApi')` mock `streamDiagnosis` 函数
 
-### 11.2 前端目录与命令（待落地）
+### 11.2 前端目录与命令（已落地）
 
 - 单元/组件测试：`frontend/src/**/*.test.tsx` / `frontend/src/**/*.test.ts`
-- E2E 测试：`frontend/tests/e2e/*.spec.ts`
-- **运行命令尚未创建**：`package.json` 目前无 `test` script，Vitest 也未安装。实施时需先完成以下步骤：
-  1. `npm install -D vitest @testing-library/react @testing-library/jest-dom jsdom`
-  2. 在 `vite.config.ts` 添加 `test` 配置块
-  3. 在 `package.json` `scripts` 中添加 `"test": "vitest run"` 和 `"test:watch": "vitest"`
-  4. `npm install -D @playwright/test` 并执行 `npx playwright install`
-- 命令确认后更新本条目为已落地
+- E2E 测试：`frontend/tests/e2e/*.spec.ts`（Playwright，已安装）
+- **Vitest 配置**：`frontend/vitest.config.ts`（独立配置，不污染 `vite.config.ts`）
+- **Setup 文件**：`frontend/tests/setup.ts`（import @testing-library/jest-dom）
+- **运行命令**（已添加至 `package.json`）：
+  ```bash
+  npm run test            # vitest run（CI friendly，非 watch）
+  npm run test:watch      # vitest（watch 模式，本地开发）
+  npm run test:coverage   # vitest run --coverage（输出 lcov/html/text）
+  ```
+- **覆盖率阈值**：行/函数/分支/语句 ≥ 70%（`vitest.config.ts` 中强制）
+- **首批测试文件**：
+  - `frontend/src/components/diagnosis/ChecklistPanel.test.tsx`
+  - `frontend/src/store/autoStore.test.ts`
+  - `frontend/src/hooks/useAutoDiagnosis.test.ts`
+- **E2E（Playwright）**：已安装（`@playwright/test` 在 devDependencies）；运行命令：
+  ```bash
+  npm run playwright:install   # 首次安装 Chromium 浏览器二进制（~90MB，一次性）
+  npm run e2e                  # 运行 E2E 测试（自动起 Vite dev server）
+  npm run e2e:headed           # 有头模式调试
+  ```
 
 ### 11.3 冻结文件的 mock 策略
 
@@ -368,3 +402,4 @@ SENSOR_POLL_INTERVAL=999          # 防止意外触发
 | 0.2 | 2026-03-12 | 确定工具选型（去掉 MSW，改用 page.route()）；明确 Layer 2/3 边界与失败归因；确定 LangGraph stub 策略（dependency_overrides）；补充嵌入模型隔离、冻结文件 mock 策略、canary 触发方式与 token 预算 |
 | 0.3 | 2026-03-12 | 修正 §11.6 retriever stub 点（`app.agents.retrieval.get_retriever`，非不存在的 `app.api.deps.get_retriever`）；将 §11.2 前端命令降级为待落地项（当前 package.json 无 test script，Vitest 未安装）|
 | 0.4 | 2026-03-12 | 修正 §11.4 AsyncClient 用法（httpx ≥ 0.28 移除 `app=` 参数，改用 `ASGITransport(app=app)`）|
+| 0.5 | 2026-03-14 | 落地 §11.2：安装 Vitest + RTL + jsdom；新增 `vitest.config.ts`；`package.json` 增加 test/test:watch/test:coverage scripts；创建首批三个测试文件；填写 §5.1 fixture 路径；新增 §2.5 覆盖率策略；升级 conftest.py 增加 async_client/fake_graph fixtures 和 mock_retriever autouse；创建 backend/tests/fixtures/ 目录结构；更新 scripts/local/test.sh 增加 Vitest 步骤 |

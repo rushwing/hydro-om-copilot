@@ -1,0 +1,32 @@
+event: status
+data: {"node": "symptom_parser", "phase": "start"}
+
+event: status
+data: {"node": "symptom_parser", "phase": "end"}
+
+event: status
+data: {"node": "retrieval", "phase": "start"}
+
+event: status
+data: {"node": "retrieval", "phase": "end"}
+
+event: status
+data: {"node": "reasoning", "phase": "start"}
+
+event: status
+data: {"node": "reasoning", "phase": "end"}
+
+event: token
+data: {"text": "经诊断，#1机振动异常原因为导叶开度不一致。"}
+
+event: status
+data: {"node": "report_gen", "phase": "start"}
+
+event: status
+data: {"node": "report_gen", "phase": "end"}
+
+event: result
+data: {"session_id": "test-session-001", "unit_id": "#1机", "topic": "vibration_swing", "root_causes": [{"rank": 1, "title": "导叶开度不一致", "probability": 0.85, "evidence": ["导叶开度反馈偏差 >2%"], "parameters_to_confirm": ["实际导叶开度"]}], "check_steps": [{"step": 1, "action": "检查导叶开度反馈", "expected": "开度一致", "caution": null}], "risk_level": "high", "escalation_required": false, "escalation_reason": null, "report_draft": "经诊断，建议立即检查导叶开度反馈。", "sources": ["REQ-001"]}
+
+event: done
+data: {}
