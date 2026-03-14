@@ -67,6 +67,26 @@ last_reviewed: 2026-03-12
 
 **失败归因边界**：Layer 3 失败 → 前端渲染、路由或状态流转问题，API 契约已由 Layer 2 保证。
 
+#### E2E 优先级分级与 CI 触发规则
+
+| 优先级 | 含义 | describe 标注 | 触发时机 |
+|--------|------|---------------|---------|
+| P0 | 挂了必是回归，阻断合并 | `describe("... @P0", ...)` | PR gate + Daily + Weekly |
+| P1 | 重要但非阻断；相对耗时 | `describe("... @P1", ...)` | Daily + Weekly |
+| P2 | 扩展覆盖；可接受偶发 flaky | `describe("... @P2", ...)` | Weekly only |
+| P3 | 边缘场景 / 探索性 | `describe("... @P3", ...)` | Weekly only（按需） |
+
+**运行命令对应关系：**
+
+```bash
+npm run e2e:p0     # PR gate — playwright test --grep "@P0"
+npm run e2e:daily  # Daily   — playwright test --grep "@P0|@P1"
+npm run e2e        # Weekly  — playwright test（全量）
+```
+
+> 新增 spec 文件时必须在 `test.describe` 名称中标注优先级标签（`@P0`~`@P3`）；
+> 未标注的 describe 块默认**不被** PR gate 和 Daily build 纳入，仅 Weekly 全量运行时覆盖。
+
 ### 2.5 覆盖率策略
 
 | 层 | 主指标 | 初期目标 | 商用目标 |
@@ -192,13 +212,20 @@ last_reviewed: 2026-03-12
 
 - [ ] 前端 build / type-check / unit tests
 - [ ] 后端 pytest（unit + integration）
-- [ ] 关键 E2E smoke tests（mock LLM）
+- [ ] E2E **P0 用例**（`npm run e2e:p0`，mock LLM）
 - [ ] 不允许真实 LLM 或外网依赖
 
-### 6.3 Nightly / 手动验收
+### 6.3 Daily build（每日 02:00 UTC，自动触发）
 
-- [ ] 浏览器全流程回归
-- [ ] 少量真实 LLM canary
+- [ ] E2E **P0 + P1 用例**（`npm run e2e:daily`）
+- [ ] 失败时自动在 GitHub 开 issue（label: `bug`, `ci-failure`）
+- [ ] 不包含真实 LLM canary
+
+### 6.4 Weekly build（每周日 03:00 UTC，自动触发）
+
+- [ ] E2E **全量用例**（`npm run e2e`，含 P2/P3）
+- [ ] 少量真实 LLM canary（`pytest -m canary`）
+- [ ] 失败时自动在 GitHub 开 issue（label: `bug`, `ci-failure`）
 - [ ] 记录 token 成本、失败样本和运行时长
 
 ---
@@ -403,3 +430,4 @@ SENSOR_POLL_INTERVAL=999          # 防止意外触发
 | 0.3 | 2026-03-12 | 修正 §11.6 retriever stub 点（`app.agents.retrieval.get_retriever`，非不存在的 `app.api.deps.get_retriever`）；将 §11.2 前端命令降级为待落地项（当前 package.json 无 test script，Vitest 未安装）|
 | 0.4 | 2026-03-12 | 修正 §11.4 AsyncClient 用法（httpx ≥ 0.28 移除 `app=` 参数，改用 `ASGITransport(app=app)`）|
 | 0.5 | 2026-03-14 | 落地 §11.2：安装 Vitest + RTL + jsdom；新增 `vitest.config.ts`；`package.json` 增加 test/test:watch/test:coverage scripts；创建首批三个测试文件；填写 §5.1 fixture 路径；新增 §2.5 覆盖率策略；升级 conftest.py 增加 async_client/fake_graph fixtures 和 mock_retriever autouse；创建 backend/tests/fixtures/ 目录结构；更新 scripts/local/test.sh 增加 Vitest 步骤 |
+| 0.6 | 2026-03-15 | 新增 E2E 优先级分级（§2.3）：P0 进 PR gate、P1 进 Daily、P2/P3 进 Weekly；更新 §6.2 明确 `e2e:p0`；新增 §6.3 Daily build 和 §6.4 Weekly build 规范（自动开 issue on failure） |

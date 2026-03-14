@@ -113,7 +113,7 @@ async function mockCommonRoutes(page: import("@playwright/test").Page) {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-test.describe("Pending archive state management", () => {
+test.describe("Pending archive state management @P0", () => {
   test.beforeEach(async ({ page }) => {
     await mockCommonRoutes(page);
   });

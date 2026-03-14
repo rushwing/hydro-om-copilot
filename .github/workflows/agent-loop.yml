@@ -1,8 +1,10 @@
 name: CI
 
 # ── Triggers ─────────────────────────────────────────────────────────────────
-# PR gate: runs on every PR open/update targeting main (blocking merge)
-# Agent loop: runs after a PR merges to main (finds next claimable task)
+# PR gate:    every PR open/update targeting main (blocking merge)
+# Agent loop: after a PR merges to main (finds next claimable task)
+# Daily:      02:00 UTC — P0+P1 E2E; auto-opens issue on failure
+# Weekly:     03:00 UTC Sunday — full E2E suite; auto-opens issue on failure
 
 on:
   pull_request:
@@ -10,11 +12,14 @@ on:
     branches: [main]
   push:
     branches: [main]
+  schedule:
+    - cron: "0 2 * * *"    # daily  — P0+P1 E2E
+    - cron: "0 3 * * 0"    # weekly — full E2E suite (Sunday)
 
-# Cancel in-progress runs on the same PR/branch to save resources
+# Cancel in-progress runs for PRs/pushes; never cancel scheduled builds.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'schedule' && github.event.schedule || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 # ── Jobs ──────────────────────────────────────────────────────────────────────
 
@@ -125,10 +130,11 @@ jobs:
       - name: Check BUG frontmatter
         run: python3 scripts/check_bug_frontmatter.py --strict
 
-  # ── 6. E2E smoke tests ──────────────────────────────────────────────────────
+  # ── 6. E2E smoke tests (PR gate — P0 only) ──────────────────────────────────
   e2e-smoke:
-    name: E2E smoke (Playwright)
+    name: E2E smoke P0 (Playwright)
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
     steps:
       - uses: actions/checkout@v4
 
@@ -147,11 +153,99 @@ jobs:
         working-directory: frontend
         run: npx playwright install --with-deps chromium
 
-      - name: Run E2E tests
+      - name: Run E2E P0 tests
+        working-directory: frontend
+        run: npm run e2e:p0
+
+  # ── 7. Daily E2E build (P0 + P1) ────────────────────────────────────────────
+  daily-e2e:
+    name: Daily E2E P0+P1 (Playwright)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' && github.event.schedule == '0 2 * * *'
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E P0+P1 tests
+        working-directory: frontend
+        run: npm run e2e:daily
+
+      - name: Open issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const date = new Date().toISOString().split('T')[0];
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[CI] Daily E2E (P0+P1) failed — ${date}`,
+              body: `## Daily E2E build failure\n\n**Date**: ${date}\n**Run**: ${runUrl}\n\n### 排查步骤\n1. 打开上方 Run 链接查看失败的测试\n2. 确认是代码回归还是环境问题\n3. 在此 issue 中标注根因后关闭\n`,
+              labels: ['bug', 'ci-failure'],
+            });
+
+  # ── 8. Weekly E2E build (full suite) ────────────────────────────────────────
+  weekly-e2e:
+    name: Weekly E2E full suite (Playwright)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' && github.event.schedule == '0 3 * * 0'
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run full E2E suite
         working-directory: frontend
         run: npm run e2e
 
-  # ── 7. Agent loop (post-merge only) ─────────────────────────────────────────
+      - name: Open issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const date = new Date().toISOString().split('T')[0];
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[CI] Weekly E2E full suite failed — ${date}`,
+              body: `## Weekly E2E full suite failure\n\n**Date**: ${date}\n**Run**: ${runUrl}\n\n### 排查步骤\n1. 打开上方 Run 链接查看失败的测试\n2. 确认是 P2/P3 用例本身 flaky 还是真实回归\n3. 在此 issue 中标注根因后关闭\n`,
+              labels: ['bug', 'ci-failure'],
+            });
+
+  # ── 9. Agent loop (post-merge only) ─────────────────────────────────────────
   # Scans tasks/ for claimable work after a PR merges to main.
   # Outputs a report but does NOT auto-trigger agents (HITL gate still required).
   agent-loop:

@@ -19,7 +19,7 @@ const MINIMAL_SSE = [
   "",
 ].join("\n");
 
-test.describe("App shell smoke", () => {
+test.describe("App shell smoke @P0", () => {
   test.beforeEach(async ({ page }) => {
     await page.route("**/diagnosis/run", (route) =>
       route.fulfill({
