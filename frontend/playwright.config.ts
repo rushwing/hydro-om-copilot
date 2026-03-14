@@ -17,6 +17,14 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  // Dev server is NOT auto-started here; run `npm run dev` separately or
-  // use webServer in CI. E2E tests mock the backend via page.route().
+  // Playwright auto-starts the Vite dev server before running tests and
+  // tears it down afterwards. npm run e2e is self-contained — no manual
+  // `npm run dev` required. reuseExistingServer lets local devs skip the
+  // boot wait if they already have Vite running on :5173.
+  webServer: {
+    command: "npm run dev",
+    url: "http://localhost:5173",
+    reuseExistingServer: !process.env.CI,
+    timeout: 30_000,
+  },
 });
