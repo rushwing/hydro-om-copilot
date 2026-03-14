@@ -2,9 +2,9 @@
 harness_id: TEST-001
 component: testing / verification
 owner: Engineering
-version: 0.1
+version: 0.6
 status: active
-last_reviewed: 2026-03-12
+last_reviewed: 2026-03-15
 ---
 
 # Harness Standard — 测试与验证规程

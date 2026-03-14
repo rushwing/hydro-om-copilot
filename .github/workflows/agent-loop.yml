@@ -201,16 +201,22 @@ jobs:
               labels: ['bug', 'ci-failure'],
             });
 
-  # ── 8. Weekly E2E build (full suite) ────────────────────────────────────────
+  # ── 8. Weekly E2E build (full suite + LLM canary) ────────────────────────────
   weekly-e2e:
-    name: Weekly E2E full suite (Playwright)
+    name: Weekly E2E full suite + canary (Playwright + pytest)
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule' && github.event.schedule == '0 3 * * 0'
     permissions:
       issues: write
+    env:
+      AUTO_RANDOM_PROBLEMS_GEN: "false"
+      SENSOR_POLL_INTERVAL: "999"
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      VECTOR_STORE_TYPE: "chroma"
     steps:
       - uses: actions/checkout@v4
 
+      # ── Node / Playwright ────────────────────────────────────────────────────
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -218,7 +224,7 @@ jobs:
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install dependencies
+      - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
 
@@ -229,6 +235,23 @@ jobs:
       - name: Run full E2E suite
         working-directory: frontend
         run: npm run e2e
+
+      # ── Python / LLM canary ──────────────────────────────────────────────────
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --frozen --extra dev
+
+      - name: Run LLM canary tests
+        working-directory: backend
+        run: uv run pytest -m canary --tb=short -q
 
       - name: Open issue on failure
         if: failure()
@@ -241,7 +264,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: `[CI] Weekly E2E full suite failed — ${date}`,
-              body: `## Weekly E2E full suite failure\n\n**Date**: ${date}\n**Run**: ${runUrl}\n\n### 排查步骤\n1. 打开上方 Run 链接查看失败的测试\n2. 确认是 P2/P3 用例本身 flaky 还是真实回归\n3. 在此 issue 中标注根因后关闭\n`,
+              body: `## Weekly E2E full suite failure\n\n**Date**: ${date}\n**Run**: ${runUrl}\n\n### 排查步骤\n1. 打开上方 Run 链接查看失败的测试\n2. 确认是 P2/P3 用例本身 flaky 还是真实回归\n3. canary 失败时确认是模型波动还是 prompt 回归\n4. 在此 issue 中标注根因后关闭\n`,
               labels: ['bug', 'ci-failure'],
             });
 
