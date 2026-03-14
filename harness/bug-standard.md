@@ -304,13 +304,22 @@ PR 必须同时包含：
 
 ### 自动可检查（脚本 / CI）
 
-- [ ] Bug frontmatter 字段完整
-- [ ] `status` 只使用允许枚举值
-- [ ] `severity` 只使用 `S1/S2/S3/S4`
-- [ ] `priority` 只使用 `P0/P1/P2/P3`
-- [ ] `status == fixed` 时 `related_tc` 非空
-- [ ] `status == in_progress` 时 `owner != unassigned`
-- [ ] `related_req` 中编号在 repo 中存在
+> 以下检查由 `scripts/check_bug_frontmatter.py --strict` 执行，
+> 已接入 CI job `bug-frontmatter`（REQ-025 ✅）。
+>
+> ```bash
+> python3 scripts/check_bug_frontmatter.py          # 报告模式
+> python3 scripts/check_bug_frontmatter.py --strict # CI 模式（有错误时 exit 1）
+> ```
+
+- [x] Bug frontmatter 字段完整（必填：`bug_id / title / status / severity / priority / owner / related_req / related_tc / reported_by`）
+- [x] `status` 只使用允许枚举值（`open / confirmed / in_progress / fixed / regressing / closed / wont_fix`）
+- [x] `severity` 只使用 `S1/S2/S3/S4`
+- [x] `priority` 只使用 `P0/P1/P2/P3`
+- [x] `status == fixed` 时 `related_tc` 非空
+- [x] `status == in_progress` 时 `owner != unassigned`
+- [x] `related_req` 中编号在 repo 中存在（扫描 `tasks/` 全目录）
+- [x] `depends_on` 中每个 REQ/BUG ID 在 repo 中存在
 
 ### 人工检查
 
@@ -342,3 +351,4 @@ PR 必须同时包含：
 | 0.3 | 2026-03-13 | §6.2 认领规则改为 Claim PR mutex 两阶段流程，与 requirement-standard 和 agent-cli-playbook 模板 C 保持一致 |
 | 0.4 | 2026-03-13 | §6.2 补充 Bundle 例外（claim commit 提交到 REQ 分支，无 Claim PR）和 Stacked PR 例外（不写共享分支；retarget 时 HITL 解决冲突保留 fixed）|
 | 0.5 | 2026-03-13 | §5.4 新增 Stacked PR confirmed→fixed 直接推进例外说明，与 §6.2 保持一致 |
+| 0.6 | 2026-03-15 | §9 落地自动检查：`scripts/check_bug_frontmatter.py` + CI job `bug-frontmatter`（REQ-025）；补充 depends_on 校验项 |
