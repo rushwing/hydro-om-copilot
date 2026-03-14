@@ -10,22 +10,27 @@
 
 import { test, expect } from "@playwright/test";
 
-// ── Full SSE that produces a DiagnosisResult with unit_id "#1机" ──────────────
+// ── Full SSE helpers ──────────────────────────────────────────────────────────
 
-const FULL_SSE = [
-  "event: status",
-  'data: {"node":"symptom_parser","phase":"start"}',
-  "",
-  "event: status",
-  'data: {"node":"symptom_parser","phase":"end"}',
-  "",
-  "event: result",
-  'data: {"session_id":"test-session-001","unit_id":"#1机","topic":"vibration_swing","root_causes":[],"check_steps":[],"risk_level":"medium","escalation_required":false,"report_draft":null,"sources":[]}',
-  "",
-  "event: done",
-  "data: {}",
-  "",
-].join("\n");
+function makeSse(sessionId: string, unitId: string): string {
+  return [
+    "event: status",
+    'data: {"node":"symptom_parser","phase":"start"}',
+    "",
+    "event: status",
+    'data: {"node":"symptom_parser","phase":"end"}',
+    "",
+    "event: result",
+    `data: {"session_id":"${sessionId}","unit_id":"${unitId}","topic":"vibration_swing","root_causes":[],"check_steps":[],"risk_level":"medium","escalation_required":false,"report_draft":null,"sources":[]}`,
+    "",
+    "event: done",
+    "data: {}",
+    "",
+  ].join("\n");
+}
+
+const FULL_SSE = makeSse("test-session-001", "#1机");
+const FULL_SSE_2 = makeSse("test-session-002", "#2机");
 
 // ── Seed item factory ─────────────────────────────────────────────────────────
 
@@ -168,21 +173,37 @@ test.describe("Pending archive state management", () => {
   });
 
   // ── Test 3 ─────────────────────────────────────────────────────────────────
-  // Multiple pending items — new result must not overwrite existing ones
+  // New diagnosis arriving while an existing pending item is present must not
+  // overwrite the older one — exercises the live addToPending dedup path.
 
   test("新诊断到来旧结果不被覆盖（多条 pending 均保留）", async ({ page }) => {
-    const seed = [
-      makeSeedItem({ id: "seed-001", unit_id: "#1机" }),
-      makeSeedItem({ id: "seed-002", unit_id: "#2机" }),
-    ];
+    // Seed #1机 as a pre-existing pending item
+    const seed = [makeSeedItem({ id: "seed-001", unit_id: "#1机" })];
 
     await page.addInitScript((data) => {
       localStorage.clear();
       localStorage.setItem("hydro_om_pending_archive", JSON.stringify(data));
     }, seed);
 
-    await page.goto("/history");
+    // Second diagnosis (#2机) arrives via the real UI flow
+    await page.route("**/diagnosis/run", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "text/event-stream; charset=utf-8",
+        body: FULL_SSE_2,
+      }),
+    );
 
+    await page.goto("/");
+    await page.locator('textarea[placeholder*="描述异常现象"]').fill("#2机振动超限");
+    await page.getByRole("button", { name: "开始诊断" }).click();
+
+    const pendingBtn = page.getByRole("button", { name: /稍后处理/ });
+    await pendingBtn.waitFor({ state: "visible", timeout: 10_000 });
+    await pendingBtn.click();
+
+    // Both items must coexist in the pending tab
+    await page.goto("/history");
     await expect(page.getByText("#1机").first()).toBeVisible();
     await expect(page.getByText("#2机").first()).toBeVisible();
   });
