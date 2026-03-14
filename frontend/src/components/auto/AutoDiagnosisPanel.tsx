@@ -136,13 +136,16 @@ function EpochIndicator({ status }: { status: AutoDiagnosisStatus }) {
 interface UnitStatusGridProps {
   cooldowns: Record<string, number>;
   pendingQueue: PendingFaultItem[];
+  current: CurrentDiagnosisInfo | null;
   epochNum: number;
 }
 
-function UnitStatusGrid({ cooldowns, pendingQueue, epochNum }: UnitStatusGridProps) {
+function UnitStatusGrid({ cooldowns, pendingQueue, current, epochNum }: UnitStatusGridProps) {
   const units = ["#1机", "#2机", "#3机", "#4机"];
   // Units with a fault waiting in queue
   const faultUnits = new Set(pendingQueue.map((f) => f.unit_id));
+  // Unit actively being diagnosed also counts as a red / unresolved fault state
+  const diagnosingUnit = current?.unit_id ?? null;
   // Before any epoch completes, show neutral state for all units
   const hasData = epochNum > 0;
 
@@ -157,6 +160,8 @@ function UnitStatusGrid({ cooldowns, pendingQueue, epochNum }: UnitStatusGridPro
       <div className="grid grid-cols-2 gap-2">
         {units.map((uid) => {
           const hasFault = faultUnits.has(uid);
+          const isDiagnosing = diagnosingUnit === uid;
+          const isRed = hasFault || isDiagnosing;
           const cooling = (cooldowns[uid] ?? 0) > 0;
           return (
             <div
@@ -164,7 +169,7 @@ function UnitStatusGrid({ cooldowns, pendingQueue, epochNum }: UnitStatusGridPro
               className={`rounded border px-3 py-2 flex items-center justify-between text-xs ${
                 !hasData
                   ? "border-surface-border bg-surface-elevated text-text-muted"
-                  : hasFault
+                  : isRed
                   ? "border-red-800 bg-red-950/30 text-red-400"
                   : "border-emerald-800 bg-emerald-950/30 text-emerald-400"
               }`}
@@ -172,6 +177,8 @@ function UnitStatusGrid({ cooldowns, pendingQueue, epochNum }: UnitStatusGridPro
               <span className="font-medium">{uid}</span>
               {!hasData ? (
                 <span className="text-text-muted">—</span>
+              ) : isDiagnosing ? (
+                <span className="text-red-400 animate-pulse">⟳ 诊断中</span>
               ) : hasFault ? (
                 <span className="text-red-400">⚠ 待处理</span>
               ) : cooling ? (
@@ -419,6 +426,7 @@ export function AutoDiagnosisPanel({ isManualRunning = false }: AutoDiagnosisPan
           <UnitStatusGrid
             cooldowns={status.unit_cooldowns}
             pendingQueue={status.pending_queue}
+            current={status.current}
             epochNum={status.epoch_num}
           />
           <EpochIndicator status={status} />

@@ -164,6 +164,40 @@ test.describe("BUG-002 AutoDiagnosisPanel order & semantics @P1", () => {
     await expect(page.getByText("⚠ 待处理")).not.toBeVisible();
   });
 
+  // F — actively-diagnosing unit shows red (not green) ──────────────────────
+  test("unit currently being diagnosed shows red even when pending_queue is empty", async ({
+    page,
+  }) => {
+    const startedAt = new Date(Date.now() - 10_000).toISOString();
+
+    await enterAutoMode(
+      page,
+      makeStatus({
+        running: true,
+        epoch_num: 1,
+        pending_queue: [], // queue is empty — but #3机 is actively being diagnosed
+        current: {
+          session_id: "test-session-active",
+          unit_id: "#3机",
+          fault_types: ["振动"],
+          phase: "reasoning",
+          stream_preview: "推理中…",
+          sensor_data: [],
+          started_at: startedAt,
+        },
+      }),
+    );
+
+    // #3机 is actively diagnosed → must show "⟳ 诊断中", not ✓ 正常
+    await expect(page.getByText("⟳ 诊断中")).toBeVisible();
+
+    // The other 3 units have no fault and are not being diagnosed → green
+    await expect(page.getByText("✓ 正常")).toHaveCount(3);
+
+    // No "⚠ 待处理" since the queue is empty
+    await expect(page.getByText("⚠ 待处理")).not.toBeVisible();
+  });
+
   // E — timestamp in CurrentDiagnosisCard ────────────────────────────────────
   test("CurrentDiagnosisCard displays a relative timestamp from started_at", async ({
     page,
