@@ -13,6 +13,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "e2e": "playwright test",
+    "e2e:p0": "playwright test --grep \"@P0\"",
+    "e2e:daily": "playwright test --grep \"@P0|@P1\"",
     "e2e:headed": "playwright test --headed",
     "playwright:install": "playwright install chromium"
   },

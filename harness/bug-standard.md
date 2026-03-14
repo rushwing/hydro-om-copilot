@@ -2,7 +2,7 @@
 harness_id: BUG-STD-001
 component: bugs / defect tracking
 owner: Engineering
-version: 0.6
+version: 0.8
 status: active
 last_reviewed: 2026-03-15
 ---
@@ -44,6 +44,21 @@ last_reviewed: 2026-03-15
 | 没有对应 REQ 的缺陷（技术债/框架问题）| 开 Bug，`related_req: []` |
 | Bug 修复需要引入新功能 | Bug 关闭后单独开 REQ，不在 Bug 内扩展 |
 
+### 2.1 tc_policy 回填规则（逐步还账）
+
+当 Bug 的 `related_req` 中存在**没有 `tc_policy` 字段、或 `tc_policy: optional`** 的 REQ 时，
+开 BUG 文档的同时必须在该 REQ 的 frontmatter 中补写：
+
+```yaml
+tc_policy: required
+```
+
+**目的**：确保对旧 REQ 的首次缺陷修复触发"测试先行"门禁，实现逐步还账而非永久豁免。旧 REQ 不因缺少字段而持续免检——第一次被 Bug 触及时即还账。
+
+**执行时机**：开 BUG 文档时即写入，不得推迟到 PR 提交时。
+
+**例外**：若该 REQ 的缺陷属于 `S4`（纯体验问题），且评估后 TC 投入不具性价比，可在 REQ 上写 `tc_policy: exempt` 并在 `tc_exempt_reason` 中注明理由，豁免回填 `required`。
+
 ---
 
 ## 3. 目录与文档规范
@@ -70,6 +85,8 @@ tasks/archive/cancelled/    # 已标记 wont_fix 的 Bug
 | `owner` | `unassigned` / `claude_code` / `openai_codex` |
 | `related_req` | 关联需求编号列表，无则空数组 |
 | `related_tc` | 触发此 Bug 的测试用例，或回归时需新增的 TC |
+| `tc_policy` | `required` / `optional` / `exempt`；缺省视为 `optional` |
+| `tc_exempt_reason` | `tc_policy=exempt` 时必填；说明豁免理由 |
 | `reported_by` | `human` / `ci` / `canary` / Agent 标识 |
 | `depends_on` | （可选）必须先合并的 REQ/BUG 编号列表，无则省略或空数组；用于 Serialize 策略，Agent 看到此字段时不认领 |
 
@@ -85,6 +102,8 @@ priority: P1
 owner: unassigned
 related_req: []
 related_tc: []
+tc_policy: required
+tc_exempt_reason: ""
 reported_by: human
 depends_on: []
 ---
@@ -176,6 +195,7 @@ open → confirmed → in_progress → fixed → regressing → closed
 - 不允许 `open → closed`（必须经过 confirmed 和回归）
 - 不允许 `fixed → closed`（必须经过 `regressing`，确保回归测试跑过）
 - 不允许 PR 中无回归 TC 而将状态推进到 `fixed`
+- 不允许 `tc_policy=required` 且 `related_tc` 为空时推进到 `in_progress`
 
 ### 5.4 已知例外：Stacked PR 的 `confirmed → fixed` 直接推进
 
@@ -320,6 +340,9 @@ PR 必须同时包含：
 - [x] `status == in_progress` 时 `owner != unassigned`
 - [x] `related_req` 中编号在 repo 中存在（扫描 `tasks/` 全目录）
 - [x] `depends_on` 中每个 REQ/BUG ID 在 repo 中存在
+- [ ] `tc_policy` ∈ `{required, optional, exempt}`（字段存在时）
+- [ ] `tc_policy=exempt` 时 `tc_exempt_reason` 非空
+- [ ] `tc_policy=required` 且 `status ∈ {in_progress, fixed, regressing, closed}` 时 `related_tc` 非空
 
 ### 人工检查
 
@@ -352,3 +375,5 @@ PR 必须同时包含：
 | 0.4 | 2026-03-13 | §6.2 补充 Bundle 例外（claim commit 提交到 REQ 分支，无 Claim PR）和 Stacked PR 例外（不写共享分支；retarget 时 HITL 解决冲突保留 fixed）|
 | 0.5 | 2026-03-13 | §5.4 新增 Stacked PR confirmed→fixed 直接推进例外说明，与 §6.2 保持一致 |
 | 0.6 | 2026-03-15 | §9 落地自动检查：`scripts/check_bug_frontmatter.py` + CI job `bug-frontmatter`（REQ-025）；补充 depends_on 校验项 |
+| 0.7 | 2026-03-15 | §3.2/3.3 新增 `tc_policy` / `tc_exempt_reason` 字段；§5.3 新增 tc_policy=required 非法流转；§9 新增三条自动检查项；`check_tc_readiness.py` + CI job `check-tc-readiness` |
+| 0.8 | 2026-03-15 | §2.1 新增 tc_policy 回填规则：Bug 关联无 tc_policy 的旧 REQ 时，开 BUG 文档同时须回填 `tc_policy: required`，实现逐步还账 |

@@ -2,7 +2,7 @@
 agent_id: claude_code
 type: memory-index
 budget: 100 lines max (enforce on every write)
-last_updated: 2026-03-12
+last_updated: 2026-03-15
 ---
 
 # Claude Code — Memory Index
@@ -24,6 +24,7 @@ last_updated: 2026-03-12
 - **嵌入模型**：测试中 patch retriever，禁止加载 4GB 本地模型
 - **`unit_id`**：纯字符串（如 `"#1机"`），不是数字 ID
 - **`AUTO_RANDOM_PROBLEMS_GEN`**：测试环境必须为 `false`，否则后台轮询污染状态
+- **拉新分支**：先 `git fetch origin` + 确认上一个 PR 已合入 main，再 `checkout main && pull` 后拉分支；不可直接从旧功能分支分叉
 
 ---
 
@@ -37,7 +38,9 @@ last_updated: 2026-03-12
 → [detail](memories/L-xxx.md)   ← 只在有详细文件时才写这行
 -->
 
-_（暂无记录）_
+### L-001 · 新分支必须基于最新 main · 2026-03-15
+**Lesson**: 从旧功能分支拉新分支会带入已合入 main 的旧提交，导致 force push 修复。
+**Apply when**: 每次开始新 REQ 实现前——即便上一个 PR "应该已经合入"，也要主动 fetch 确认。
 
 ---
 

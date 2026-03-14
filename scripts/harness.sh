@@ -403,6 +403,12 @@ cmd_tc_design() {
   [[ "$owner" == "unassigned" ]] \
     || die "${req} 已被 ${owner} 认领"
 
+  local tc_policy_val=""
+  tc_policy_val=$(grep '^tc_policy:' "$req_file" | awk '{print $2}' | tr -d '"') || true
+  if [[ "$tc_policy_val" == "exempt" ]]; then
+    die "${req} tc_policy=exempt，该需求已豁免 TC 设计，不允许走 tc-design。\n如需改变豁免决策，先把 tc_policy 改为 required 或 optional。"
+  fi
+
   # test_case_ref 已有内容则跳过（TC 已设计）
   local existing_tc=""
   existing_tc=$(awk '
@@ -488,6 +494,18 @@ cmd_bugfix() {
   fi
   [[ "$owner" == "unassigned" ]] \
     || die "${bug} 已被 ${owner} 认领"
+
+  local tc_policy=""
+  tc_policy=$(grep '^tc_policy:' "$bug_file" | awk '{print $2}' | tr -d '"') || true
+  if [[ "$tc_policy" == "required" ]]; then
+    local related_tc_val=""
+    related_tc_val=$(grep '^related_tc:' "$bug_file" | sed 's/^related_tc: *//' | tr -d '[]"') || true
+    if [[ -z "${related_tc_val// /}" ]]; then
+      [[ $force -eq 1 ]] \
+        && warn "${bug} tc_policy=required 但 related_tc 为空，--force 覆盖..." \
+        || die "${bug} tc_policy=required，修复前必须在 related_tc 填写回归 TC。\n如需豁免，改 tc_policy=exempt 并填写 tc_exempt_reason，或使用 --force 跳过。"
+    fi
+  fi
 
   # Extract REQ id from supplied branch (exact match used inside check_related_req_conflict)
   local branch_req=""

@@ -1,5 +1,12 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// Prevent system HTTP proxy from intercepting localhost requests.
+// Common on dev machines with clash/v2ray (e.g. http_proxy=127.0.0.1:7897).
+// Only set if absent so CI environments are unaffected.
+if (!process.env.NO_PROXY) {
+  process.env.NO_PROXY = "localhost,127.0.0.1";
+}
+
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: true,

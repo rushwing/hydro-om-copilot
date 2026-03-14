@@ -2,9 +2,9 @@
 harness_id: CI-STD-001
 component: CI / quality gates / automation
 owner: Engineering
-version: 0.3
+version: 0.6
 status: active
-last_reviewed: 2026-03-13
+last_reviewed: 2026-03-15
 ---
 
 # Harness Standard — CI 与质量门禁规程
@@ -53,10 +53,11 @@ cd frontend && npm run lint              # eslint
 | 前端 type-check | tsc | ✅ CI job: `frontend-checks` |
 | 前端 lint | eslint | ✅ CI job: `frontend-checks` |
 | **REQ 覆盖率** | **check_req_coverage.py** | ✅ CI job: `req-coverage` |
+| **TC 就绪性** | **check_tc_readiness.py** | ✅ CI job: `check-tc-readiness` |
 | 后端单元测试 | pytest | ✅ CI job: `backend-tests` |
 | 前端单元测试 | vitest | ✅ CI job: `frontend-checks` |
-| E2E smoke | playwright | ✅ 已安装（`npm run e2e`）；🔲 CI job 待接入 |
-| 真实 LLM canary | pytest -m canary | 🔲 仅 nightly/手动 |
+| E2E P0 smoke | playwright `--grep @P0` | ✅ CI job: `e2e-smoke`（`npm run e2e:p0`，REQ-026）|
+| 真实 LLM canary | pytest -m canary | 🔲 仅 weekly/手动 |
 
 ### 测试环境变量（CI 必须设置）
 
@@ -156,11 +157,52 @@ jobs:
 
 ---
 
+---
+
+## 定时构建（Daily / Weekly）
+
+### 触发时间
+
+| 构建类型 | cron | 描述 |
+|----------|------|------|
+| Daily | `0 2 * * *` | 每日 02:00 UTC，P0+P1 E2E |
+| Weekly | `0 3 * * 0` | 每周日 03:00 UTC，全量 E2E + LLM canary |
+
+### 运行内容
+
+| 构建类型 | E2E 范围 | canary | 失败处理 |
+|----------|----------|--------|---------|
+| Daily | P0+P1（`npm run e2e:daily`）| 不跑 | 自动开 issue |
+| Weekly | 全量（`npm run e2e`）| pytest -m canary | 自动开 issue |
+
+### 自动开 issue 规格
+
+- **触发条件**：job 以 `failure()` 结束
+- **实现方式**：`actions/github-script@v7`（jobs 需声明 `permissions: issues: write`）
+- **issue 标题格式**：`[CI] {Daily|Weekly} E2E {类型} failed — YYYY-MM-DD`
+- **labels**：`bug`, `ci-failure`
+- **issue 正文**：包含 Actions Run URL 和中文排查步骤
+- **关闭时机**：人工确认根因后手动关闭
+
+> **不定义 Release 规则**：发布流程待业务成熟后再制定，当前不设版本号门禁或 tag 触发。
+
+### 并发控制
+
+定时构建使用独立 concurrency group（`github.event.schedule` 值），不与 PR/push build 互相取消：
+
+```yaml
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'schedule' && github.event.schedule || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+```
+
+---
+
 ## 待补充
 
 - [x] GitHub Actions workflow 文件（`.github/workflows/agent-loop.yml`，REQ-012 已完成）
+- [x] 定时构建（Daily / Weekly）及自动开 issue
 - [ ] Pre-commit hook 安装脚本（`scripts/install-hooks.sh`）
-- [ ] 测试失败时的处理流程与通知机制
 - [ ] Canary 预算监控接入
 - [ ] `check_req_coverage.py` 扩展：Python 类/函数提取器（覆盖 HybridRetriever、FaultAggregator 等）
 
@@ -173,3 +215,6 @@ jobs:
 | 0.1 | 2026-03-12 | 初始 stub；记录 pre-commit 命令、PR gate 状态和 Agent Loop 设计草稿 |
 | 0.2 | 2026-03-13 | 补充 REQ 覆盖率门禁规程（check_req_coverage.py）；将 frontmatter 检查绑定为 draft→ready 前置条件；更新 PR Gate 表格；status 升级为 active |
 | 0.3 | 2026-03-14 | 落地 REQ-012：创建 `.github/workflows/agent-loop.yml`，5 个 job（backend-lint、backend-tests、frontend-checks、req-coverage、agent-loop）；PR Gate 全栏更新为 CI 已接入 |
+| 0.4 | 2026-03-15 | 落地 REQ-026：新增 `e2e-smoke` CI job（Playwright，4 条 pending-archive 用例）；PR Gate E2E 行标注 ✅ CI job 已接入 |
+| 0.5 | 2026-03-15 | 新增定时构建节（Daily P0+P1、Weekly 全量）；PR gate E2E 收窄为 P0 only（`e2e:p0`）；定义自动开 issue 规格；声明不设 Release 规则；新增并发控制说明；workflow 新增 `daily-e2e` / `weekly-e2e` jobs |
+| 0.6 | 2026-03-15 | PR Gate 表新增 TC 就绪性行（`check_tc_readiness.py` / CI job `check-tc-readiness`）；frontmatter version 与 changelog 对齐 |
