@@ -2,7 +2,7 @@
 harness_id: REQ-STD-001
 component: requirements / task routing
 owner: Engineering
-version: 0.1
+version: 0.7
 status: active
 last_reviewed: 2026-03-12
 ---
@@ -142,6 +142,8 @@ tasks/                  # 所有待执行工作项的根目录
 | `owner` | `unassigned` / `claude_code` / `openai_codex` |
 | `depends_on` | 顺序依赖项列表（所有项必须 `done` 才可认领），无则空数组 |
 | `test_case_ref` | 对应测试用例文档列表，例如 `[TC-001, TC-002]`；`test_designed` 状态必须非空 |
+| `tc_policy` | `required` / `optional` / `exempt`；缺省视为 `optional` |
+| `tc_exempt_reason` | `tc_policy=exempt` 时必填；说明豁免理由 |
 | `pytest_ref` | **可选**。直接指向 pytest 测试方法的选择器列表（YAML block list），格式为 `tests/path/file.py::Class::method`。用于已实现 REQ 的回溯追踪，不替代 `test_case_ref`（TC 文档引用）。`xfail_ref` 字段可额外记录 `xfail(strict=True)` 的已知缺口。 |
 | `scope` | `frontend` / `backend` / `fullstack` / `docs` / `tests` |
 | `acceptance` | 验收标准摘要（一句话）|
@@ -158,6 +160,8 @@ phase: phase-1
 owner: unassigned
 depends_on: []
 test_case_ref: []
+tc_policy: required
+tc_exempt_reason: ""
 scope: backend
 acceptance: [一句话摘要]
 ---
@@ -226,6 +230,7 @@ draft → ready → test_designed → in_progress → review → done
 - 不允许 `blocked → done`
 - 不允许 `ready → in_progress`（必须经过 `test_designed`）
 - 不允许 `test_case_ref` 为空时迁移到 `test_designed`
+- 不允许 `tc_policy=required` 时 `test_case_ref` 为空仍迁移到 `test_designed`
 - 不允许两个 Agent 同时把同一项从 `test_designed` 改成 `in_progress`
 - 不允许 frontmatter 检查未通过时迁移到 `ready`（`check_req_coverage.py --strict` 报错即阻断）
 
@@ -419,6 +424,9 @@ blocked: [原因描述，例如"等待 PM 确认 API 字段设计" 或 "REQ-005 
 - [ ] `status == test_designed` 时 `test_case_ref` 非空
 - [ ] `test_case_ref` 中的 TC 文档在 `tasks/test-cases/` 中存在
 - [ ] `status == in_progress` 时 `owner != unassigned`
+- [ ] `tc_policy` ∈ `{required, optional, exempt}`（字段存在时）
+- [ ] `tc_policy=exempt` 时 `tc_exempt_reason` 非空
+- [ ] `tc_policy=required` 且 `status ∈ {test_designed, in_progress, review, done}` 时 `test_case_ref` 非空
 
 ### 人工检查
 
@@ -465,3 +473,4 @@ blocked: [原因描述，例如"等待 PM 确认 API 字段设计" 或 "REQ-005 
 | 0.4 | 2026-03-12 | Branch-as-Lock 升级为 PR-as-Claim；修正 §8.5 分工表（openai_codex 不认领实现任务，与 SOUL.md 对齐）|
 | 0.5 | 2026-03-12 | PR-as-Claim 升级为 Claim PR auto-merge 互斥锁：git merge 冲突检测作为真正的互斥机制；Claim 分支与实现分支分离；GitHub 配置要求记录于 ci-standard.md |
 | 0.6 | 2026-03-12 | §2.3 状态数量从 6 修正为 7（补充 test_designed）；§8.2 拆分为模式 A（TC 设计认领，openai_codex）和模式 B（实现认领，claude_code），各自前置条件独立，均使用 Claim PR 互斥机制 |
+| 0.7 | 2026-03-15 | §5.1/5.2 新增 `tc_policy` / `tc_exempt_reason` 字段；§6.3 新增 tc_policy=required 非法流转；§11 新增三条自动检查项；`check_tc_readiness.py` + CI job `check-tc-readiness` |
