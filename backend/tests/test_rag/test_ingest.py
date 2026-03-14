@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import List
 from unittest.mock import patch
 
 import pytest
@@ -39,10 +38,10 @@ route_keys:
 class _FakeEmbeddings:
     """Deterministic 16-dim embeddings — no model download required."""
 
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
         return [[float(abs(hash(t)) % 100) / 100.0] * 16 for t in texts]
 
-    def embed_query(self, text: str) -> List[float]:
+    def embed_query(self, text: str) -> list[float]:
         return [float(abs(hash(text)) % 100) / 100.0] * 16
 
 

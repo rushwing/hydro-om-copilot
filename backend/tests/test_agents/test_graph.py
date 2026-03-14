@@ -148,11 +148,18 @@ async def test_graph_ainvoke_with_image():
             return return_val
         return AsyncMock(side_effect=_se)
 
-    mock_symptom_parser = _make_node("symptom_parser", {"parsed_symptom": {"unit_id": "#1机"}, "topic": "vibration_swing"})
+    mock_symptom_parser = _make_node(
+        "symptom_parser", {"parsed_symptom": {"unit_id": "#1机"}, "topic": "vibration_swing"}
+    )
     mock_image_agent   = _make_node("image_agent",   {"ocr_text": "仪表读数 38 Hz"})
     mock_retrieval     = _make_node("retrieval",     {"sources": ["VIB.001"]})
     mock_reasoning     = _make_node("reasoning",     {
-        "root_causes": [{"rank": 1, "title": "质量不平衡", "probability": 0.9, "evidence": [], "parameters_to_confirm": []}],
+        "root_causes": [
+            {
+                "rank": 1, "title": "质量不平衡", "probability": 0.9,
+                "evidence": [], "parameters_to_confirm": [],
+            },
+        ],
         "risk_level": "high",
         "escalation_required": False,
         "escalation_reason": None,

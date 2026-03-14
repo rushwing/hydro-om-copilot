@@ -11,7 +11,6 @@ import pytest
 from app.api.deps import get_graph
 from app.main import app as fastapi_app
 
-
 # ---------------------------------------------------------------------------
 # SSE parsing helpers
 # ---------------------------------------------------------------------------
@@ -150,7 +149,10 @@ def test_diagnosis_run_result_fields(client):
             "data": {
                 "output": {
                     "check_steps": [
-                        {"step": 1, "action": "检查导叶开度反馈", "expected": "开度一致", "caution": None}
+                        {
+                            "step": 1, "action": "检查导叶开度反馈",
+                            "expected": "开度一致", "caution": None,
+                        }
                     ],
                     "report_draft": "经诊断，#1机振动异常原因为导叶开度不一致。",
                 }

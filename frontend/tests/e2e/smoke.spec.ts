@@ -1,45 +1,45 @@
 /**
  * Smoke E2E test — verifies the app shell loads without a real backend.
  *
- * SSE calls are intercepted via page.route() and return the fixture from
- * tests/fixtures/sse/happy_path.txt. No real backend or LLM is required.
+ * Backend SSE and health calls are intercepted via page.route() so no real
+ * server or LLM is required. The SSE body is a minimal inline response
+ * (avoids Node.js fs/path imports which are outside the bundler tsconfig).
  *
- * Run:  npm run e2e          (requires `npm run dev` on :5173)
- * CI:   skipped by default; enable by passing --project=chromium
+ * Run:  npm run e2e          (requires `npm run dev` running on :5173)
  */
 
 import { test, expect } from "@playwright/test";
-import { readFileSync } from "fs";
-import { join } from "path";
 
-// Load the SSE fixture once (relative to this file's location)
-const SSE_FIXTURE = readFileSync(
-  join(__dirname, "../fixtures/sse/happy_path.txt"),
-  "utf-8",
-);
+const MINIMAL_SSE = [
+  "event: status",
+  'data: {"node": "symptom_parser", "phase": "start"}',
+  "",
+  "event: done",
+  "data: {}",
+  "",
+].join("\n");
 
 test.describe("App shell smoke", () => {
-  test("page title contains expected product name", async ({ page }) => {
-    // Intercept backend calls so the test doesn't need a real server
-    await page.route("**/diagnosis/run", async (route) => {
-      await route.fulfill({
+  test.beforeEach(async ({ page }) => {
+    await page.route("**/diagnosis/run", (route) =>
+      route.fulfill({
         status: 200,
         contentType: "text/event-stream; charset=utf-8",
-        body: SSE_FIXTURE,
-      });
-    });
+        body: MINIMAL_SSE,
+      }),
+    );
 
-    await page.route("**/health", async (route) => {
-      await route.fulfill({
+    await page.route("**/health", (route) =>
+      route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ status: "ok" }),
-      });
-    });
+      }),
+    );
+  });
 
+  test("page root element is visible", async ({ page }) => {
     await page.goto("/");
-
-    // The app shell should render — check for the page root element
     await expect(page.locator("#root")).toBeVisible();
   });
 

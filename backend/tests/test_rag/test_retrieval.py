@@ -202,11 +202,15 @@ async def test_aretrieve_uses_both_dense_and_sparse():
 
     # At least one dense-only doc must appear (proves dense path ran)
     dense_ids = {f"L2.TOPIC.D{i}" for i in range(4)}
-    assert result_ids & dense_ids, f"No dense-only doc in results; dense retrieval may be bypassed. ids={result_ids}"
+    assert result_ids & dense_ids, (
+        f"No dense-only doc in results; dense retrieval may be bypassed. ids={result_ids}"
+    )
 
     # At least one sparse-only doc must appear (proves sparse/BM25 path ran)
     sparse_ids = {f"L2.TOPIC.S{i}" for i in range(4)}
-    assert result_ids & sparse_ids, f"No sparse-only doc in results; BM25 retrieval may be bypassed. ids={result_ids}"
+    assert result_ids & sparse_ids, (
+        f"No sparse-only doc in results; BM25 retrieval may be bypassed. ids={result_ids}"
+    )
 
 
 @pytest.mark.asyncio

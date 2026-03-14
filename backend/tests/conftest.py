@@ -20,11 +20,11 @@ os.environ.setdefault("SENSOR_POLL_INTERVAL", "999")
 os.environ.setdefault("ANTHROPIC_API_KEY", "sk-ant-test-key-placeholder")
 os.environ.setdefault("VECTOR_STORE_TYPE", "chroma")
 
+from unittest.mock import MagicMock
+
 import pytest
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
-from unittest.mock import MagicMock
-
 
 # ── Fake retriever (blocks embedding model load) ──────────────────────────────
 
