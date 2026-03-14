@@ -110,7 +110,22 @@ jobs:
       - name: Check REQ coverage
         run: python3 scripts/check_req_coverage.py --strict
 
-  # ── 5. Agent loop (post-merge only) ─────────────────────────────────────────
+  # ── 5. BUG frontmatter gate ──────────────────────────────────────────────────
+  bug-frontmatter:
+    name: BUG frontmatter check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check BUG frontmatter
+        run: python3 scripts/check_bug_frontmatter.py --strict
+
+  # ── 6. Agent loop (post-merge only) ─────────────────────────────────────────
   # Scans tasks/ for claimable work after a PR merges to main.
   # Outputs a report but does NOT auto-trigger agents (HITL gate still required).
   agent-loop:
