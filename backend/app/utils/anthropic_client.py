@@ -98,5 +98,8 @@ async def llm_json(
         _logger.warning(
             "llm_json: expected dict, got list (len=%d); using first element", len(parsed)
         )
-        return parsed[0] if parsed and isinstance(parsed[0], dict) else {}
+        parsed = parsed[0] if parsed and isinstance(parsed[0], dict) else {}
+    if not isinstance(parsed, dict):
+        _logger.warning("llm_json: expected dict, got %s; returning {}", type(parsed).__name__)
+        return {}
     return parsed
