@@ -59,8 +59,16 @@ fi
 
 # ── Frontend type-check ───────────────────────────────────────────────────────
 if [[ "$BACKEND_ONLY" != true ]]; then
-    log_step "Frontend type-check (tsc --noEmit)"
+    log_step "Frontend unit tests (Vitest)"
     cd "$PROJECT_ROOT/frontend"
+    if npm run test; then
+        log_ok "Vitest passed"
+    else
+        log_fail "Vitest failed"
+        (( ERRORS++ )) || true
+    fi
+
+    log_step "Frontend type-check (tsc --noEmit)"
     if npm run type-check; then
         log_ok "TypeScript type-check passed"
     else

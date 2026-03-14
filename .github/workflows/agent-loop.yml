@@ -1,0 +1,137 @@
+name: CI
+
+# ── Triggers ─────────────────────────────────────────────────────────────────
+# PR gate: runs on every PR open/update targeting main (blocking merge)
+# Agent loop: runs after a PR merges to main (finds next claimable task)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel in-progress runs on the same PR/branch to save resources
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# ── Jobs ──────────────────────────────────────────────────────────────────────
+
+jobs:
+  # ── 1. Backend quality checks ───────────────────────────────────────────────
+  backend-lint:
+    name: Backend lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Lint (ruff check)
+        run: uv tool run ruff check backend/
+
+      - name: Format check (ruff format)
+        run: uv tool run ruff format --check backend/
+
+  # ── 2. Backend tests ─────────────────────────────────────────────────────────
+  backend-tests:
+    name: Backend tests (pytest)
+    runs-on: ubuntu-latest
+    env:
+      AUTO_RANDOM_PROBLEMS_GEN: "false"
+      SENSOR_POLL_INTERVAL: "999"
+      ANTHROPIC_API_KEY: "sk-ant-mock-ci-key"
+      VECTOR_STORE_TYPE: "chroma"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync --frozen
+
+      - name: Run pytest
+        working-directory: backend
+        run: uv run pytest --tb=short -q
+
+  # ── 3. Frontend quality checks ───────────────────────────────────────────────
+  frontend-checks:
+    name: Frontend checks (tsc + ESLint + Vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Type-check (tsc --noEmit)
+        working-directory: frontend
+        run: npm run type-check
+
+      - name: Lint (ESLint)
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Unit tests (Vitest)
+        working-directory: frontend
+        run: npm run test
+
+  # ── 4. REQ coverage gate ─────────────────────────────────────────────────────
+  req-coverage:
+    name: REQ coverage check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check REQ coverage
+        run: python3 scripts/check_req_coverage.py --strict
+
+  # ── 5. Agent loop (post-merge only) ─────────────────────────────────────────
+  # Scans tasks/ for claimable work after a PR merges to main.
+  # Outputs a report but does NOT auto-trigger agents (HITL gate still required).
+  agent-loop:
+    name: Agent loop (find next task)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Find next claimable tasks
+        run: |
+          if [ -f scripts/agent-loop.py ]; then
+            python3 scripts/agent-loop.py
+          else
+            echo "scripts/agent-loop.py not yet implemented — skipping agent loop"
+          fi
