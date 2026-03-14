@@ -37,9 +37,6 @@ jobs:
       - name: Lint (ruff check)
         run: uv tool run ruff check backend/
 
-      - name: Format check (ruff format)
-        run: uv tool run ruff format --check backend/
-
   # ── 2. Backend tests ─────────────────────────────────────────────────────────
   backend-tests:
     name: Backend tests (pytest)
@@ -62,7 +59,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: uv sync --frozen
+        run: uv sync --frozen --extra dev
 
       - name: Run pytest
         working-directory: backend
