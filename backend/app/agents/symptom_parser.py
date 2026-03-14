@@ -16,7 +16,17 @@ TOPIC_KEYWORDS = {
 
 
 def _infer_topic(parsed: ParsedSymptom) -> str:
-    text = " ".join(parsed.get("symptoms", []) + [parsed.get("device", "")])
+    if not isinstance(parsed, dict):
+        parsed = {}
+    raw_symptoms = parsed.get("symptoms") or []
+    # Flatten in case the LLM returned nested lists
+    symptoms: list[str] = []
+    for s in raw_symptoms:
+        if isinstance(s, list):
+            symptoms.extend(str(x) for x in s)
+        else:
+            symptoms.append(str(s))
+    text = " ".join(symptoms + [parsed.get("device") or ""])
     scores = {topic: 0 for topic in TOPIC_KEYWORDS}
     for topic, keywords in TOPIC_KEYWORDS.items():
         for kw in keywords:
