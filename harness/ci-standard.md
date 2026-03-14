@@ -55,7 +55,7 @@ cd frontend && npm run lint              # eslint
 | **REQ 覆盖率** | **check_req_coverage.py** | ✅ CI job: `req-coverage` |
 | 后端单元测试 | pytest | ✅ CI job: `backend-tests` |
 | 前端单元测试 | vitest | ✅ CI job: `frontend-checks` |
-| E2E smoke | playwright | 🔲 未安装 |
+| E2E smoke | playwright | ✅ 已安装（`npm run e2e`）；🔲 CI job 待接入 |
 | 真实 LLM canary | pytest -m canary | 🔲 仅 nightly/手动 |
 
 ### 测试环境变量（CI 必须设置）

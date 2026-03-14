@@ -282,7 +282,7 @@ last_reviewed: 2026-03-12
 ### 11.2 前端目录与命令（已落地）
 
 - 单元/组件测试：`frontend/src/**/*.test.tsx` / `frontend/src/**/*.test.ts`
-- E2E 测试：`frontend/tests/e2e/*.spec.ts`（Playwright，待安装）
+- E2E 测试：`frontend/tests/e2e/*.spec.ts`（Playwright，已安装）
 - **Vitest 配置**：`frontend/vitest.config.ts`（独立配置，不污染 `vite.config.ts`）
 - **Setup 文件**：`frontend/tests/setup.ts`（import @testing-library/jest-dom）
 - **运行命令**（已添加至 `package.json`）：
@@ -296,7 +296,12 @@ last_reviewed: 2026-03-12
   - `frontend/src/components/diagnosis/ChecklistPanel.test.tsx`
   - `frontend/src/store/autoStore.test.ts`
   - `frontend/src/hooks/useAutoDiagnosis.test.ts`
-- **E2E（Playwright）**：`npm install -D @playwright/test && npx playwright install`（按需安装）
+- **E2E（Playwright）**：已安装（`@playwright/test` 在 devDependencies）；运行命令：
+  ```bash
+  npm run playwright:install   # 首次安装 Chromium 浏览器二进制（~90MB，一次性）
+  npm run e2e                  # 运行 E2E 测试（自动起 Vite dev server）
+  npm run e2e:headed           # 有头模式调试
+  ```
 
 ### 11.3 冻结文件的 mock 策略
 
