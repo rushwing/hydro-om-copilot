@@ -90,6 +90,8 @@ async def llm_json(
     except json.JSONDecodeError as exc:
         _logger.warning("json.loads failed (%s), attempting json_repair", exc)
         repaired = repair_json(text, return_objects=True)
+        if isinstance(repaired, list):
+            repaired = repaired[0] if repaired and isinstance(repaired[0], dict) else {}
         if isinstance(repaired, dict):
             return repaired
         raise
