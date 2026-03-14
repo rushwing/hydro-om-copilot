@@ -125,7 +125,33 @@ jobs:
       - name: Check BUG frontmatter
         run: python3 scripts/check_bug_frontmatter.py --strict
 
-  # ── 6. Agent loop (post-merge only) ─────────────────────────────────────────
+  # ── 6. E2E smoke tests ──────────────────────────────────────────────────────
+  e2e-smoke:
+    name: E2E smoke (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        working-directory: frontend
+        run: npm run e2e
+
+  # ── 7. Agent loop (post-merge only) ─────────────────────────────────────────
   # Scans tasks/ for claimable work after a PR merges to main.
   # Outputs a report but does NOT auto-trigger agents (HITL gate still required).
   agent-loop:
