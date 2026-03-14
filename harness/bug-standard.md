@@ -2,9 +2,9 @@
 harness_id: BUG-STD-001
 component: bugs / defect tracking
 owner: Engineering
-version: 0.1
+version: 0.6
 status: active
-last_reviewed: 2026-03-12
+last_reviewed: 2026-03-15
 ---
 
 # Harness Standard — Bug 管理与回归规程
