@@ -202,8 +202,12 @@ test.describe("Pending archive state management @P0", () => {
     await pendingBtn.waitFor({ state: "visible", timeout: 10_000 });
     await pendingBtn.click();
 
-    // Both items must coexist in the pending tab
-    await page.goto("/history");
+    // Both items must coexist in the pending tab.
+    // Use SPA nav (clicking the nav link) instead of page.goto to avoid
+    // triggering addInitScript again, which would clear localStorage and
+    // wipe out the #2机 entry added via the UI above.
+    await page.getByRole("link", { name: "历史记录" }).click();
+    await page.waitForURL("**/history");
     await expect(page.getByText("#1机").first()).toBeVisible();
     await expect(page.getByText("#2机").first()).toBeVisible();
   });
