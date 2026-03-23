@@ -62,6 +62,7 @@ def build_llm() -> BaseChatModel:
             model=settings.fallback_llm_model,
             temperature=settings.llm_temperature,
             api_key=settings.openai_api_key,
+            base_url=settings.openai_api_base,
         )
         return primary.with_fallbacks(
             [fallback],
