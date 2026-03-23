@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     # LLM — fallback (OpenAI)
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     openai_api_base: str = Field(default="https://api.openai.com/v1", alias="OPENAI_API_BASE")
-    fallback_llm_model: str = Field(default="gpt-4.5", alias="FALLBACK_LLM_MODEL")
+    fallback_llm_model: str = Field(default="gpt-5.4", alias="FALLBACK_LLM_MODEL")
 
     # Vector store
     vector_store_type: str = "chroma"  # chroma | qdrant
