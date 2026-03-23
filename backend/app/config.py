@@ -46,12 +46,16 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    # LLM
+    # LLM — primary (Anthropic)
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
     anthropic_auth_token: str = Field(default="", alias="ANTHROPIC_AUTH_TOKEN")
     anthropic_api_base: str = Field(default="https://api.anthropic.com", alias="ANTHROPIC_API_BASE")
     llm_model: str = "claude-sonnet-4-6"
     llm_temperature: float = 0.1
+
+    # LLM — fallback (OpenAI)
+    openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
+    fallback_llm_model: str = Field(default="gpt-4.5", alias="FALLBACK_LLM_MODEL")
 
     # Vector store
     vector_store_type: str = "chroma"  # chroma | qdrant
