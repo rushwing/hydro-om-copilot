@@ -9,12 +9,19 @@ Fallback: if OPENAI_API_KEY is set, the returned model is wrapped with
 .with_fallbacks([ChatOpenAI(...)]) so LangChain retries on 5xx/connection errors.
 """
 
+import anthropic as _anthropic
 from anthropic import Anthropic, AsyncAnthropic
 from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models import BaseChatModel
 from langchain_openai import ChatOpenAI
 
 from app.config import settings
+
+# Only fall back on server-side / network failures, not on caller errors (4xx).
+_FALLBACK_EXCEPTIONS = (
+    _anthropic.APIConnectionError,  # network / timeout
+    _anthropic.InternalServerError,  # 500 / 503 / 529
+)
 
 
 def _build_primary() -> ChatAnthropic:
@@ -43,6 +50,12 @@ def _build_primary() -> ChatAnthropic:
 
 
 def build_llm() -> BaseChatModel:
+    """Build the primary LLM with an optional OpenAI fallback.
+
+    NOTE: this function is currently unused by the graph nodes, which call
+    llm_json() directly.  It is provided as a ready-to-wire interface for
+    future LangChain streaming integration.
+    """
     primary = _build_primary()
     if settings.openai_api_key:
         fallback = ChatOpenAI(
@@ -50,5 +63,8 @@ def build_llm() -> BaseChatModel:
             temperature=settings.llm_temperature,
             api_key=settings.openai_api_key,
         )
-        return primary.with_fallbacks([fallback])
+        return primary.with_fallbacks(
+            [fallback],
+            exceptions_to_handle=_FALLBACK_EXCEPTIONS,
+        )
     return primary
